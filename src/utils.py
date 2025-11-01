@@ -7,6 +7,11 @@ __author__ = "Chao Yang"
 __version__ = "1.0"
 
 
+import matplotlib as mpl
+import numpy as np
+import pandas as pd
+from matplotlib.colors import ColorConverter, LinearSegmentedColormap
+
 """
 Utility functions for the GS_GMLIPS package.
 
@@ -16,9 +21,6 @@ Functions include:
 - wrapper functions to include the gradient and hessian calculations for analytic PES functions.
 
 """
-
-import matplotlib as mpl
-from matplotlib.colors import ColorConverter, LinearSegmentedColormap
 
 """
 Load PaletteFessa colors, forked from https://github.com/luigibonati/fessa-color-palette/blob/master/fessa.py
@@ -76,3 +78,64 @@ def jax_backend(func):
             return func(*args, xp=np, **kwargs)
 
     return wrapper
+
+
+def plumed_to_pandas(filename="./COLVAR"):
+    """
+    Load a PLUMED file and save it to a dataframe.
+
+    Parameters
+    ----------
+    filename : string, optional
+        PLUMED output file
+
+    Returns
+    -------
+    df : DataFrame
+        Collective variables dataframe
+    """
+    skip_rows = 1
+    # Read header
+    headers = pd.read_csv(filename, sep=" ", skipinitialspace=True, nrows=0)
+    # Discard #! FIELDS
+    headers = headers.columns[2:]
+    # Load dataframe and use headers for columns names
+    df = pd.read_csv(
+        filename,
+        sep=" ",
+        skipinitialspace=True,
+        header=None,
+        skiprows=range(skip_rows),
+        names=headers,
+        comment="#",
+    )
+
+    return df
+
+
+def dos_2D(x, y, bins=100, range=None, density=True):
+    """
+    Calculate 2D density of states (DOS) histogram.
+
+    Parameters
+    ----------
+    x : array-like
+        x coordinates
+    y : array-like
+        y coordinates
+    bins : int or [int, int], optional
+        Number of bins for each dimension
+    range : [[xmin, xmax], [ymin, ymax]], optional
+        Range for each dimension
+
+    Returns
+    -------
+    H : 2D array
+        Density of states histogram
+    xedges : 1D array
+        Bin edges for x dimension
+    yedges : 1D array
+        Bin edges for y dimension
+    """
+    H, xedges, yedges = np.histogram2d(x, y, bins=bins, range=range, density=density)
+    return H.T, xedges, yedges

@@ -1,2 +1,4 @@
 # Process files
 working/
+dist/
+gs_gmlip.egg-info/

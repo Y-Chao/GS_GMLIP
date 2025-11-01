@@ -6,6 +6,18 @@ from __future__ import annotations
 __author__ = "Chao Yang"
 __version__ = "1.0"
 
+import numpy as np
+from matplotlib import pyplot as plt
+
+try:
+    import jax
+    import jax.numpy as jnp
+except ImportError:
+    jax = None
+    jnp = None
+
+import utils
+
 """
 Implementation of the expressions of analytic potential energy surface (PES) and its derivatives.
 
@@ -18,10 +30,8 @@ Functions include:
 - wolfe_quapp_potential_local_soft: A variant of the Wolfe-Quapp potential with a local softening term.
 """
 
-import numpy as np
 
-
-def muller_brown_potential(x, y, xp):
+def muller_brown_potential(x, y, xp=jnp):
     """
     Calculate the Muller-Brown potential at coordinates (x, y).
     This is a 2D potential function commonly used in optimization problems.
@@ -56,7 +66,7 @@ def muller_brown_potential(x, y, xp):
     return v
 
 
-def muller_brown_potential_three_stats(x, y, xp):
+def muller_brown_potential_three_stats(x, y, xp=jnp):
     """
     Calculate the Muller-Brown potential at coordinates (x, y).
     This is a 2D potential function commonly used in optimization problems.
@@ -91,7 +101,7 @@ def muller_brown_potential_three_stats(x, y, xp):
     return v
 
 
-def leps_potential(x, y, xp):
+def leps_potential(x, y, xp=jnp):
     """
     Calculate the LEPS potential at coordinates (x, y).
     This is a 2D potential function commonly used in optimization problems.
@@ -157,7 +167,7 @@ def leps_potential(x, y, xp):
     return v
 
 
-def leps_potential_harmonic(x, y, xp):
+def leps_potential_harmonic(x, y, xp=jnp):
     """
     Calculate the LEPS potential with a harmonic term at coordinates (x, y).
     This is a modified version of the LEPS potential.
@@ -225,7 +235,7 @@ def leps_potential_harmonic(x, y, xp):
     return v
 
 
-def wolfe_quapp_potential(x, y, xp):
+def wolfe_quapp_potential(x, y, xp=jnp):
     """
     Calculate the Wolfe-Quapp potential at coordinates (x, y).
 
@@ -248,7 +258,7 @@ def wolfe_quapp_potential(x, y, xp):
     return v
 
 
-def wolfe_quapp_potential_local_soft(x, y, xp):
+def wolfe_quapp_potential_local_soft(x, y, xp=jnp):
     """
     Calculate the Wolfe-Quapp potential with a local softening term at coordinates (x, y).
     This is a modified version of the Wolfe-Quapp potential.
@@ -279,21 +289,34 @@ class AnalyticPES:
     def __init__(self, function_name, use_jax=False):
         self.function_name = function_name
         self.use_jax = use_jax
+        self.xp = None
         self._initialize_function()
 
     def _initialize_function(self):
         if self.function_name == "muller_brown":
             self.func = muller_brown_potential
+            self.range = [[-1.75, 1.25], [-0.5, 2.5]]
+            self.z_max = 24
         elif self.function_name == "muller_brown_three_stats":
             self.func = muller_brown_potential_three_stats
+            self.range = [[-1.75, 1.25], [-0.5, 2.5]]
+            self.z_max = 24
         elif self.function_name == "leps":
             self.func = leps_potential
+            self.range = [[0, 4], [0, 4]]
+            self.z_max = 2
         elif self.function_name == "leps_harmonic":
             self.func = leps_potential_harmonic
+            self.range = [[0, 4], [0, 4]]
+            self.z_max = 2
         elif self.function_name == "wolfe_quapp":
             self.func = wolfe_quapp_potential
+            self.range = [[-2, 2], [-2, 2]]
+            self.z_max = 2
         elif self.function_name == "wolfe_quapp_local_soft":
             self.func = wolfe_quapp_potential_local_soft
+            self.range = [[-2, 2], [-2, 2]]
+            self.z_max = 2
         else:
             raise ValueError(f"Function '{self.function_name}' is not recognized.")
 
@@ -340,11 +363,88 @@ class AnalyticPES:
 
         return grad_func, hess_func
 
-    def get_potential(self, x, y):
-        return self.func(x, y, self.xp)
+    def get_potential_energy(self, x, y):
+        if self.use_jax:
+            if isinstance(x, np.ndarray) or isinstance(x, jnp.ndarray):
+                return self.xp.array(
+                    [self.func(x[i], y[i], self.xp) for i in range(x.shape[0])]
+                )
+            elif isinstance(x, list):
+                return [self.func(x[i], y[i], self.xp) for i in range(len(x))]
+            else:
+                return self.func(x, y, self.xp)
+        else:
+            return self.func(x, y, self.xp)
 
-    def get_gradient(self, x, y):
-        return -self.grad_func(x, y)
+    def get_forces(self, x, y):
+        if self.use_jax:
+            if isinstance(x, np.ndarray) or isinstance(x, jnp.ndarray):
+                grads = self.xp.array(
+                    [self.grad_func(x[i], y[i]) for i in range(x.shape[0])]
+                )
+                return -1 * grads
+            elif isinstance(x, list):
+                grads = [self.grad_func(x[i], y[i]) for i in range(len(x))]
+                return -1 * self.xp.array(grads)
+            else:
+                return -1 * self.grad_func(x, y)
+        else:
+            return -1 * self.grad_func(x, y)
 
     def get_hessian(self, x, y):
-        return self.hess_func(x, y)
+        if self.use_jax:
+            if isinstance(x, np.ndarray) or isinstance(x, jnp.ndarray):
+                hessians = self.xp.array(
+                    [self.hess_func(x[i], y[i]) for i in range(x.shape[0])]
+                )
+                return hessians
+            elif isinstance(x, list):
+                hessians = [self.hess_func(x[i], y[i]) for i in range(len(x))]
+                return self.xp.array(hessians)
+            else:
+                return self.hess_func(x, y)
+        else:
+            return self.hess_func(x, y)
+
+    def pes_matrix(self, x_range=None, y_range=None, num_points=100):
+        """
+        Get the matrix of potential energy surface.
+        """
+        if x_range is None:
+            x_min, x_max = self.range[0]
+        else:
+            x_min, x_max = x_range
+        if y_range is None:
+            y_min, y_max = self.range[1]
+        else:
+            y_min, y_max = y_range
+
+        x = self.xp.linspace(x_min, x_max, num_points)
+        y = self.xp.linspace(y_min, y_max, num_points)
+        X, Y = self.xp.meshgrid(x, y)
+        Z = self.get_potential_energy(X, Y)
+        return X, Y, Z
+
+    def plot_pes(
+        self, x_range=None, y_range=None, z_max=None, num_points=100, levels=50, ax=None
+    ):
+
+        X, Y, Z = self.pes_matrix(x_range, y_range, num_points)
+
+        if z_max is None:
+            z_max = self.z_max
+        Z_mask = np.ma.masked_greater(Z, z_max)
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.contourf(X, Y, Z_mask, levels=levels, cmap=utils.cm_fessa)
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_title(f"PES: {self.function_name}")
+        plt.colorbar(
+            ax.contourf(X, Y, Z_mask, levels=levels, cmap=utils.cm_fessa),
+            ax=ax,
+            label="Potential Energy",
+        )
+        return ax
