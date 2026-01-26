@@ -1,7 +1,0 @@
-ase>=3.26.0
-black>=25.9.0
-isort>=6.0.1
-jax>=0.7.2
-pytest>=8.4.2
-ruff>=0.13.1
-sphinx>=8.2.3

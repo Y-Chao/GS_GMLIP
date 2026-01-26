@@ -1,4 +1,7 @@
 # Process files
-working/
+# working/
 dist/
 gs_gmlip.egg-info/
+
+# Archived files
+deprecated/
