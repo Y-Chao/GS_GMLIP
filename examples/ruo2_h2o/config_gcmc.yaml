@@ -1,0 +1,34 @@
+# RuO2(110)/H2O GCMC search
+method: gcmc
+
+slab_file: ruo2_110_slab.xyz
+
+evaluator:
+  backend: mace
+  model: small
+  device: cpu
+  dtype: float64
+
+blocks:
+  - name: H2O
+    chemical_potential: -14.22
+  - name: OH
+    chemical_potential: -7.77
+  - name: H
+    chemical_potential: -3.39
+  - name: O
+    chemical_potential: -4.93
+
+temperature: 350.0
+
+move_weights:
+  insert: 0.35
+  delete: 0.35
+  displace: 0.25
+  swap: 0.05
+
+max_displacement: 0.6
+n_steps: 500
+
+seed: 123
+work_dir: gcmc_ruo2_h2o

@@ -1,0 +1,44 @@
+# Cu/CSHO GCMC search on Cu(100)
+# Grand canonical at 600 K
+
+method: gcmc
+
+slab_file: cu100_slab.xyz
+
+evaluator:
+  backend: mace
+  model: small
+  device: cpu
+  dtype: float64
+
+blocks:
+  - name: H2O
+    chemical_potential: -14.22
+  - name: CO2
+    chemical_potential: -22.96
+  - name: CO
+    chemical_potential: -14.78
+  - name: SO2
+    chemical_potential: -12.50
+  - name: H
+    chemical_potential: -3.39
+  - name: O
+    chemical_potential: -4.93
+  - name: OH
+    chemical_potential: -7.77
+  - name: S
+    chemical_potential: -4.00
+
+temperature: 600.0
+
+move_weights:
+  insert: 0.35
+  delete: 0.35
+  displace: 0.25
+  swap: 0.05
+
+max_displacement: 0.8
+n_steps: 500
+
+seed: 42
+work_dir: gcmc_cu100_csho

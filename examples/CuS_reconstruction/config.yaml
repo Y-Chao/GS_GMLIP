@@ -1,0 +1,84 @@
+# CuS Reconstruction: Cu(111) surface under flue gas conditions
+# m-GCMC search for stable surface configurations
+#
+# Adsorbates: *COOH, *CO, *S, *H, *O, *OH
+# Gas reservoirs: H2O, CO2, SO2, H2 at 300 K
+# Method: Modified GCMC (adsorb/desorb/swap = 0.4/0.4/0.2)
+
+method: gcmc
+
+slab_file: structure.vasp
+
+# --- Evaluator ---
+# Phase 1: EMT (development / workflow validation)
+evaluator:
+  backend: emt
+
+# Phase 2: MACE-MP (production, uncomment to use)
+# evaluator:
+#   backend: mace
+#   model: medium
+#   device: cpu
+#   dtype: float64
+
+# --- Adsorbate building blocks ---
+# Chemical potentials (eV) for EMT development mode.
+# These are approximate values tuned for the EMT energy scale.
+# For MACE/DFT production, use proper thermodynamic values.
+blocks:
+  - name: H
+    chemical_potential: 1.0
+  - name: O
+    chemical_potential: 2.0
+  - name: OH
+    chemical_potential: 3.0
+  - name: S
+    chemical_potential: 2.5
+  - name: CO
+    chemical_potential: 5.0
+  - name: H2O
+    chemical_potential: 4.0
+  - name: CO2
+    chemical_potential: 8.0
+  - name: SO2
+    chemical_potential: 5.0
+  - name: HCOOH
+    chemical_potential: 8.0
+
+# --- GCMC parameters ---
+# Note: Higher temperature for EMT (helps acceptance).
+# Use 300 K for MACE/DFT production runs.
+temperature: 1000.0
+
+move_weights:
+  insert: 0.4
+  delete: 0.4
+  displace: 0.0
+  swap: 0.2
+
+max_displacement: 0.8
+
+# --- Composition constraints ---
+composition:
+  total_max: 16  # max adsorbate units on 4x4 surface
+
+# --- Search settings ---
+n_steps: 100
+seed: 42
+work_dir: search
+
+# --- Bond constraints (v1.1) ---
+# Hookean spring constraints prevent adsorbate molecules from dissociating
+# during relaxation (e.g., C-O bond in CO, O-H bond in H2O).
+bond_constraints: true
+spring_constant: 15.0    # eV/Å² — restoring force when bond > threshold
+threshold_scale: 1.3     # threshold = current_bond_length × scale
+
+# --- Database recording (v1.1) ---
+# Record all accepted configurations to an ASE SQLite database
+db_file: gcmc_search.db
+
+# --- Potential scan ---
+# Formation energy reference potentials (V vs RHE)
+# For EMT demo, only scan a few. Use full range for MACE/DFT.
+potentials: [0.0, -1.0, -2.0]

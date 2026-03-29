@@ -1,0 +1,35 @@
+# RuO2(110)/H2O GA search
+method: ga
+
+slab_file: ruo2_110_slab.xyz
+
+evaluator:
+  backend: mace
+  model: small
+  device: cpu
+  dtype: float64
+
+blocks:
+  - name: H2O
+    chemical_potential: -14.22
+  - name: OH
+    chemical_potential: -7.77
+  - name: H
+    chemical_potential: -3.39
+  - name: O
+    chemical_potential: -4.93
+
+composition:
+  min_count: 2
+  max_count: 8
+  element_pool:
+    H: [0, 16]
+    O: [0, 8]
+
+ga:
+  population_size: 20
+  n_to_optimize: 5
+  n_steps: 100
+
+seed: 123
+work_dir: ga_ruo2_h2o
