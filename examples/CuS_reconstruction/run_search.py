@@ -31,15 +31,8 @@ from gs_gmlip.structure import SlabAtoms, BoxRegion
 from gs_gmlip.structure.composition import (
     CompositionConstraint,
     MolecularBlock,
-    co2_block,
-    co_block,
-    formic_acid_block,
-    hydrogen_block,
-    oh_block,
-    oxygen_block,
-    so2_block,
-    sulfur_block,
-    water_block,
+    get_block,
+    register_block,
 )
 
 logging.basicConfig(
@@ -48,18 +41,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Block factory registry
-BLOCK_REGISTRY = {
-    "H2O": water_block,
-    "CO2": co2_block,
-    "CO": co_block,
-    "OH": oh_block,
-    "H": hydrogen_block,
-    "O": oxygen_block,
-    "S": sulfur_block,
-    "SO2": so2_block,
-    "HCOOH": formic_acid_block,
-}
+# To register a custom molecular block, define a factory and call register_block():
+#
+#   from ase import Atoms
+#   def cho_block(mu=0.0):
+#       atoms = Atoms("CHO", positions=[[0,0,0],[1.1,0,0],[0,1.2,0]])
+#       return MolecularBlock(
+#           name="CHO", atoms=atoms, chemical_potential=mu,
+#           bonds=[(0,1),(0,2)], n_electrons=1,
+#       )
+#   register_block("CHO", cho_block)
+#
+# Then add {name: CHO, chemical_potential: 5.0} in config.yaml.
 
 
 def load_config(path: str = "config.yaml") -> dict:
@@ -102,9 +95,7 @@ def build_blocks(
     for bc in block_configs:
         name = bc["name"]
         mu = bc.get("chemical_potential", 0.0)
-        if name not in BLOCK_REGISTRY:
-            raise ValueError(f"Unknown block: {name}")
-        block = BLOCK_REGISTRY[name](mu=mu)
+        block = get_block(name, mu=mu)
 
         # Check if all elements in this block are supported
         if evaluator_backend == "emt":
@@ -122,14 +113,34 @@ def build_blocks(
     return blocks
 
 
-def prepare_slab(slab_file: str) -> SlabAtoms:
-    """Load slab and set up tags/constraints for GCMC."""
+def prepare_slab(slab_file: str, z_threshold: tuple | float | None = None) -> SlabAtoms:
+    """Load slab and set up 3-region tags/constraints for GCMC.
+
+    Regions (controlled by z_threshold):
+        tag=0: substrate — fixed, no mutation
+        tag=1: buffer   — relaxed, no mutation / rattle
+        tag=2: surface  — relaxed + mutable / rattleable
+
+    Parameters
+    ----------
+    slab_file : str
+        Path to the slab structure file (VASP, XYZ, etc.).
+    z_threshold : float or tuple(float, float), optional
+        Height thresholds for region boundaries.
+        - float: atoms below are substrate (0), above are buffer (1).
+        - tuple (z_low, z_high): 3-region split (0, 1, 2).
+        - None: infer from existing FixAtoms constraints. Fixed atoms
+          get tag=0; the remaining atoms are split into buffer (lower
+          half) and surface (upper half).
+    """
     atoms = read(slab_file)
     slab = SlabAtoms.from_atoms(atoms)
 
-    # If all tags are 0, tag the surface layer based on constraints
-    if slab.n_active == 0:
-        # Use existing FixAtoms constraints to define slab/active
+    if z_threshold is not None:
+        # User-specified height boundaries
+        slab.tag_slab_by_height(z_threshold)
+    else:
+        # Infer from FixAtoms constraints
         from ase.constraints import FixAtoms
 
         fixed_indices = set()
@@ -137,13 +148,23 @@ def prepare_slab(slab_file: str) -> SlabAtoms:
             if isinstance(c, FixAtoms):
                 fixed_indices.update(c.index)
 
-        # Tag: fixed=0 (slab), free=1 (surface, can interact with adsorbates)
+        z = slab.positions[:, 2]
+        free_mask = np.array([i not in fixed_indices for i in range(len(slab))])
         tags = np.zeros(len(slab), dtype=int)
-        for i in range(len(slab)):
-            if i not in fixed_indices:
-                tags[i] = 0  # Keep as slab — adsorbate tags start from 1+ when inserted
+
+        if free_mask.any():
+            free_z = z[free_mask]
+            z_mid = (free_z.min() + free_z.max()) / 2.0
+            for i in range(len(slab)):
+                if i in fixed_indices:
+                    tags[i] = 0  # substrate
+                elif z[i] < z_mid:
+                    tags[i] = 1  # buffer
+                else:
+                    tags[i] = 2  # surface (active)
         slab.set_tags(tags)
 
+    slab.set_slab_constraints()
     return slab
 
 
@@ -164,31 +185,20 @@ def run_single(config: dict, potential: float = 0.0) -> dict:
         Summary of the search results.
     """
     # Prepare slab
-    slab = prepare_slab(config["slab_file"])
+    z_threshold = config.get("z_threshold", None)
+    slab = prepare_slab(config["slab_file"], z_threshold=z_threshold)
     logger.info("Slab loaded: %d atoms, cell=%s", len(slab), slab.cell.lengths())
 
     # Build blocks (filter unsupported for EMT)
     eval_backend = config.get("evaluator", {}).get("backend", "emt")
     blocks = build_blocks(config["blocks"], evaluator_backend=eval_backend)
 
-    # Electrochemical potential shift:
-    # For electrochemical GCMC, mu_eff = mu_gas + n_e * e * U
-    # where n_e is the number of electrons transferred per species
-    # Simplified: shift H by 1e, O by 2e, OH by 1e, S by 2e, etc.
-    electron_transfer = {
-        "H": 1,
-        "O": 2,
-        "OH": 1,
-        "S": 2,
-        "CO": 2,
-        "H2O": 0,
-        "CO2": 0,
-        "SO2": 0,
-        "HCOOH": 0,
-    }
+    # Electrochemical potential shift (CHE model):
+    # mu_eff = mu_gas + n_e * e * U
+    # n_electrons is defined on each MolecularBlock.
     if abs(potential) > 1e-10:
         for block in blocks:
-            ne = electron_transfer.get(block.name, 0)
+            ne = block.n_electrons
             block.chemical_potential += ne * potential
             logger.info(
                 "Block %s: mu_eff = %.3f eV (shift: %d e × %.2f V)",
@@ -214,9 +224,6 @@ def run_single(config: dict, potential: float = 0.0) -> dict:
         max_displacement=config.get("max_displacement", 0.8),
         seed=config.get("seed", 42),
         work_dir=str(work_dir),
-        bond_constraints=config.get("bond_constraints", True),
-        spring_constant=config.get("spring_constant", 15.0),
-        threshold_scale=config.get("threshold_scale", 1.3),
         db_file=config.get("db_file"),
     )
 

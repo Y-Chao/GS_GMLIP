@@ -26,9 +26,10 @@ class TestSlabAtoms:
     def test_get_active_indices(self, cu111_slab):
         sa = SlabAtoms.from_atoms(cu111_slab)
         active = sa.get_active_indices()
+        buffer_idx = sa.get_buffer_indices()
         slab_idx = sa.get_slab_indices()
-        assert len(active) + len(slab_idx) == len(sa)
-        assert all(sa.get_tags()[i] > 0 for i in active)
+        assert len(active) + len(buffer_idx) + len(slab_idx) == len(sa)
+        assert all(sa.get_tags()[i] >= 2 for i in active)
 
     def test_tag_slab_by_height(self):
         slab = fcc111("Cu", size=(2, 2, 4), vacuum=10.0)

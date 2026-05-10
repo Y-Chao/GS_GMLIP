@@ -23,7 +23,7 @@ gs_gmlip/
 
 ## Features
 
-- **5 search methods**: GA, GCMC, GOFEE, SSW, Metadynamics — all with a unified `BaseSearcher` interface
+- **5 search methods**: GA, GCMC, GOFEE, SSW, MC, Metadynamics — all with a unified `BaseSearcher` interface
 - **MLIP acceleration**: MACE-MP foundation models out of the box; any ASE Calculator via adapter
 - **Surface-aware**: Tag-based slab/adsorbate separation, molecular block system (H₂O, CO₂, CO, SO₂, HCOOH, OH, H, O, S)
 - **Grand canonical**: Finite temperature/pressure equilibrium via GCMC with Metropolis acceptance

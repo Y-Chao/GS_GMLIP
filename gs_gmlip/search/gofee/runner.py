@@ -278,38 +278,13 @@ class GOFEERunner(BaseSearcher):
     @classmethod
     def from_config(cls, config: dict) -> "GOFEERunner":
         """Build from YAML config dict."""
-        from gs_gmlip.structure.composition import (
-            co2_block,
-            co_block,
-            formic_acid_block,
-            hydrogen_block,
-            oh_block,
-            oxygen_block,
-            so2_block,
-            sulfur_block,
-            water_block,
-        )
-
-        block_registry = {
-            "H2O": water_block,
-            "CO2": co2_block,
-            "CO": co_block,
-            "OH": oh_block,
-            "H": hydrogen_block,
-            "O": oxygen_block,
-            "S": sulfur_block,
-            "SO2": so2_block,
-            "HCOOH": formic_acid_block,
-        }
+        from gs_gmlip.structure.composition import get_block
 
         blocks = []
         for bconf in config.get("blocks", []):
             name = bconf["name"]
             mu = bconf.get("chemical_potential", 0.0)
-            if name in block_registry:
-                blocks.append(block_registry[name](chemical_potential=mu))
-            else:
-                raise ValueError(f"Unknown block: {name}")
+            blocks.append(get_block(name, mu=mu))
 
         from ase.io import read
 

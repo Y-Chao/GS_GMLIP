@@ -28,7 +28,7 @@ from gs_gmlip.search.gcmc.moves import (
     SwapMove,
 )
 from gs_gmlip.structure.composition import MolecularBlock
-from gs_gmlip.structure.constraints import get_adsorbate_bond_constraints
+from gs_gmlip.structure.constraints import BlockBondInfo, get_adsorbate_bond_constraints
 from gs_gmlip.structure.region import BoxRegion, Region
 
 logger = logging.getLogger(__name__)
@@ -73,9 +73,6 @@ class GCMCRunner(BaseSearcher):
         max_displacement: float = 1.0,
         seed: int | None = None,
         work_dir: str = "gcmc_run",
-        bond_constraints: bool = True,
-        spring_constant: float = 15.0,
-        threshold_scale: float = 1.3,
         db_file: str | None = None,
     ):
         super().__init__(evaluator=evaluator, workdir=work_dir, seed=seed)
@@ -83,11 +80,6 @@ class GCMCRunner(BaseSearcher):
         self.blocks = blocks
         self.temperature = temperature
         self.work_dir = Path(work_dir)
-
-        # Bond constraint parameters
-        self.bond_constraints = bond_constraints
-        self.spring_constant = spring_constant
-        self.threshold_scale = threshold_scale
 
         # Database recording
         self.db_file = db_file
@@ -134,6 +126,10 @@ class GCMCRunner(BaseSearcher):
         self.trajectory: list[dict] = []
         self.step_count = 0
 
+        # Per-tag bond constraint metadata from inserted MolecularBlocks.
+        # Populated when InsertMove inserts a block that has .bonds defined.
+        self._block_bonds: dict[int, BlockBondInfo] = {}
+
     def _build_moves(
         self,
         move_weights: dict[str, float] | None,
@@ -179,14 +175,16 @@ class GCMCRunner(BaseSearcher):
 
         # Record initial structure
         self._record_to_db(
-            self.current_atoms, step=0, move="init", accepted=True,
+            self.current_atoms,
+            step=0,
+            move="init",
+            accepted=True,
         )
 
         logger.info(
-            "GCMC initialized: E=%.4f eV, T=%.1f K, bond_constraints=%s",
+            "GCMC initialized: E=%.4f eV, T=%.1f K",
             self.current_energy,
             self.temperature,
-            self.bond_constraints,
         )
 
     def step(self) -> dict:
@@ -211,9 +209,27 @@ class GCMCRunner(BaseSearcher):
                 "n_adsorbates": self._count_adsorbates(self.current_atoms),
             }
 
+        # Track per-block bond metadata for the newly inserted block
+        new_block_bonds = dict(self._block_bonds)
+        move_type = move_info.get("move", "")
+        if move_type == "insert":
+            block_name = move_info.get("species", "")
+            block = self._find_block(block_name)
+            if block is not None and block.bonds:
+                new_tag = max(new_atoms.get_tags())
+                new_block_bonds[new_tag] = BlockBondInfo(
+                    bonds=block.bonds,
+                    spring_constant=block.spring_constant,
+                    threshold_scale=block.threshold_scale,
+                )
+        elif move_type == "delete":
+            deleted_tag = move_info.get("deleted_tag")
+            if deleted_tag is not None:
+                new_block_bonds.pop(deleted_tag, None)
+
         # Apply bond constraints before evaluation
-        if self.bond_constraints:
-            self._apply_bond_constraints(new_atoms)
+        if new_block_bonds:
+            self._apply_bond_constraints(new_atoms, block_bonds=new_block_bonds)
 
         # Evaluate proposed configuration
         try:
@@ -239,6 +255,7 @@ class GCMCRunner(BaseSearcher):
         if accepted:
             self.current_atoms = relaxed
             self.current_energy = new_energy
+            self._block_bonds = new_block_bonds
 
             # Update best
             if new_energy < self.best_energy:
@@ -299,18 +316,33 @@ class GCMCRunner(BaseSearcher):
         tags = atoms.get_tags()
         return len(set(t for t in tags if t > 0))
 
-    def _apply_bond_constraints(self, atoms: Atoms) -> None:
-        """Apply FixAtoms + Hookean bond constraints to atoms in-place."""
+    def _find_block(self, name: str) -> "MolecularBlock | None":
+        """Find a MolecularBlock by name."""
+        for b in self.blocks:
+            if b.name == name:
+                return b
+        return None
+
+    def _apply_bond_constraints(
+        self,
+        atoms: Atoms,
+        block_bonds: dict[int, BlockBondInfo] | None = None,
+    ) -> None:
+        """Apply FixAtoms + Hookean bond constraints to atoms in-place.
+
+        Per-block spring_constant and threshold_scale are read from the
+        ``BlockBondInfo`` stored when each molecule was inserted.
+        """
         fix_atoms = [c for c in atoms.constraints if isinstance(c, FixAtoms)]
         hookean = get_adsorbate_bond_constraints(
             atoms,
-            spring_constant=self.spring_constant,
-            threshold_scale=self.threshold_scale,
+            block_bonds=block_bonds,
         )
         atoms.set_constraint(fix_atoms + hookean)
         if hookean:
             logger.debug(
-                "Applied %d Hookean bond constraints", len(hookean),
+                "Applied %d Hookean bond constraints",
+                len(hookean),
             )
 
     def _record_to_db(
@@ -344,39 +376,14 @@ class GCMCRunner(BaseSearcher):
     @classmethod
     def from_config(cls, config: dict) -> "GCMCRunner":
         """Build GCMCRunner from a config dict (parsed from YAML)."""
-        from gs_gmlip.structure.composition import (
-            co2_block,
-            co_block,
-            formic_acid_block,
-            hydrogen_block,
-            oh_block,
-            oxygen_block,
-            so2_block,
-            sulfur_block,
-            water_block,
-        )
-
-        block_registry = {
-            "H2O": water_block,
-            "CO2": co2_block,
-            "CO": co_block,
-            "OH": oh_block,
-            "H": hydrogen_block,
-            "O": oxygen_block,
-            "S": sulfur_block,
-            "SO2": so2_block,
-            "HCOOH": formic_acid_block,
-        }
+        from gs_gmlip.structure.composition import get_block
 
         # Build blocks
         blocks = []
         for bconf in config.get("blocks", []):
             name = bconf["name"]
             mu = bconf.get("chemical_potential", 0.0)
-            if name in block_registry:
-                block = block_registry[name](chemical_potential=mu)
-            else:
-                raise ValueError(f"Unknown block: {name}")
+            block = get_block(name, mu=mu)
             blocks.append(block)
 
         # Load slab
@@ -399,8 +406,5 @@ class GCMCRunner(BaseSearcher):
             max_displacement=config.get("max_displacement", 1.0),
             seed=config.get("seed"),
             work_dir=config.get("work_dir", "gcmc_run"),
-            bond_constraints=config.get("bond_constraints", True),
-            spring_constant=config.get("spring_constant", 15.0),
-            threshold_scale=config.get("threshold_scale", 1.3),
             db_file=config.get("db_file"),
         )
