@@ -39,6 +39,7 @@ Contents
    api/search
    api/data
    api/analysis
+   api/utils
 
 .. toctree::
    :maxdepth: 2

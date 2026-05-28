@@ -1,12 +1,9 @@
 """Global minimum search with Machine Leaning Interatomic Potentials (GS_GMLIP)."""
 
 from __future__ import annotations
+
 import subprocess
 from pathlib import Path
-
-LINE_WIDTH = 120
-PADDING_CHARACTER = "="
-TERMINATE_CHARACTER = "|"
 
 
 def get_git_revision() -> str:
