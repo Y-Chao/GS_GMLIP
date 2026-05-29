@@ -137,6 +137,16 @@ class Interface:
         for key in self._CACHED:
             self.__dict__.pop(key, None)
 
+    def _set_from_slab(self, slab: Atoms) -> None:
+        """Reset substrate/interface to a freshly built slab (clears fix/ads/cluster)."""
+        self.substrate = slab
+        self.interface = slab.copy()
+        self.fix = []
+        self.relax = list(range(len(slab)))
+        self.adsList = []
+        self.clusterList = []
+        self._reset_cache()
+
     def get_substrate_layers(self) -> int:
         """Number of atomic layers in the substrate (z-clustering)."""
         if len(self.substrate) == 0:
@@ -171,6 +181,7 @@ class Interface:
         self.relax = sorted(set(range(len(self.substrate))) - set(self.fix))
         for atoms in (self.substrate, self.interface):
             atoms.set_constraint(FixAtoms(indices=self.fix))
+        # geometry is unchanged (only constraints); cache reset is conservative
         self._reset_cache()
 
     def build_from_bulk(
@@ -183,11 +194,7 @@ class Interface:
     ) -> None:
         """Build substrate/interface from a bulk structure and Miller index."""
         slab = slab_from_bulk(bulk_structure, miller_index, layer, vacuum, symmetry)
-        self.substrate = slab
-        self.interface = slab.copy()
-        self.fix, self.relax = [], list(range(len(slab)))
-        self.adsList, self.clusterList = [], []
-        self._reset_cache()
+        self._set_from_slab(slab)
 
     def build_primitive_surface_from_bulk(
         self,
@@ -201,8 +208,4 @@ class Interface:
         slab = primitive_slab_from_bulk(
             bulk_structure, miller_index, layer, vacuum, symmetry
         )
-        self.substrate = slab
-        self.interface = slab.copy()
-        self.fix, self.relax = [], list(range(len(slab)))
-        self.adsList, self.clusterList = [], []
-        self._reset_cache()
+        self._set_from_slab(slab)

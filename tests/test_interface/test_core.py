@@ -135,3 +135,43 @@ def test_build_primitive_surface_sets_substrate():
     )
     assert len(intf.substrate) > 0
     assert len(intf.interface) == len(intf.substrate)
+
+
+def test_fix_substrate_zero_fixes_nothing():
+    intf = Interface(substrate=_slab())
+    intf.fix_substrate(layers=0)
+    assert intf.fix == []
+    assert intf.relax == list(range(8))
+
+
+def test_fix_substrate_all_layers_fixes_everything():
+    intf = Interface(substrate=_slab())  # 2 layers
+    intf.fix_substrate(layers=5)  # more than n_layers -> clamp to all
+    assert intf.fix == list(range(8))
+    assert intf.relax == []
+
+
+def test_fix_substrate_leaves_adsorbates_free():
+    # the interface FixAtoms must cover ONLY substrate indices; adsorbates stay free
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    intf.fix_substrate(layers=1)  # fix bottom substrate layer (indices 0-3)
+    fixed_on_interface = set()
+    for c in intf.interface.constraints:
+        if isinstance(c, FixAtoms):
+            fixed_on_interface.update(int(i) for i in c.index)
+    assert fixed_on_interface == {0, 1, 2, 3}
+    # adsorbate indices 8,9 are NOT fixed
+    assert 8 not in fixed_on_interface and 9 not in fixed_on_interface
+
+
+def test_build_from_bulk_clears_adsorbate_state():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    assert intf.adsList != []  # has an adsorbate before rebuild
+    intf.build_from_bulk(bulk("Pt", "fcc", a=3.92), (1, 1, 1), layer=3, vacuum=12.0)
+    assert intf.adsList == []
+    assert intf.clusterList == []
+    assert intf.fix == []
