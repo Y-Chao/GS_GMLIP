@@ -309,8 +309,8 @@ class Interface:
         return cls(
             substrate=substrate,
             interface=interface,
-            fixlist=data.get("fix") or None,
-            relaxlist=data.get("relax") or None,
+            fixlist=data.get("fix"),
+            relaxlist=data.get("relax"),
             adsList=data.get("adsList"),
             clusterList=data.get("clusterList"),
             split_mol_on_cluster=data.get("split_mol_on_cluster", True),
@@ -321,8 +321,8 @@ class Interface:
         return Interface(
             substrate=self.substrate.copy(),
             interface=self.interface.copy(),
-            fixlist=list(self.fix) or None,
-            relaxlist=list(self.relax) or None,
+            fixlist=list(self.fix),
+            relaxlist=list(self.relax),
             adsList=[list(g) for g in self.adsList],
             clusterList=[list(g) for g in self.clusterList],
             split_mol_on_cluster=self.split_mol_on_cluster,

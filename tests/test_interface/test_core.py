@@ -333,3 +333,33 @@ def test_copy_preserves_grouped_lists():
     clone = intf.copy()
     assert clone.adsList == intf.adsList
     assert clone.fix == intf.fix
+
+
+def test_dict_roundtrip_preserves_empty_fix_over_constrained_slab():
+    # an interface with explicit fix=[] but whose Atoms carries a FixAtoms
+    # constraint must round-trip to fix=[] (not re-derive from the constraint)
+    slab = _slab()
+    slab.set_constraint(FixAtoms(indices=[0, 1]))
+    intf = Interface(substrate=slab, fixlist=[])  # explicit empty fix
+    assert intf.fix == []
+    intf2 = Interface.from_dict(intf.to_dict())
+    assert intf2.fix == []
+
+
+def test_copy_preserves_empty_fix_over_constrained_slab():
+    slab = _slab()
+    slab.set_constraint(FixAtoms(indices=[0, 1]))
+    intf = Interface(substrate=slab, fixlist=[])
+    assert intf.fix == []
+    assert intf.copy().fix == []
+
+
+def test_dict_roundtrip_bare_slab():
+    intf = Interface(substrate=_slab())
+    intf2 = Interface.from_dict(intf.to_dict())
+    assert len(intf2.interface) == 8
+    assert len(intf2.substrate) == 8
+    assert intf2.adsList == []
+    assert intf2.clusterList == []
+    assert intf2.fix == []
+    assert intf2.relax == list(range(8))
