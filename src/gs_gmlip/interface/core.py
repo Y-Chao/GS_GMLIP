@@ -252,7 +252,9 @@ class Interface:
         self.interface.set_positions(pos)
         self._reset_cache()
 
-    def add_adsorbate(self, mol: Atoms, offset=None) -> list[int]:
+    def add_adsorbate(
+        self, mol: Atoms, offset: Optional[list[float]] = None
+    ) -> list[int]:
         """Append a molecule/cluster to the interface, re-classify, reset cache.
 
         Args:
@@ -278,9 +280,12 @@ class Interface:
         Re-classifies the remaining appended region and resets the cache.
         """
         n_sub = len(self.substrate)
+        n_int = len(self.interface)
         if any(i < n_sub for i in indices):
             raise ValueError("cannot remove substrate atoms via remove_group.")
-        keep = [i for i in range(len(self.interface)) if i not in set(indices)]
+        if any(i >= n_int for i in indices):
+            raise ValueError("remove_group index out of range.")
+        keep = [i for i in range(n_int) if i not in set(indices)]
         self.interface = self.interface[keep]
         self._init_ads_cluster(None, None)
         self._reset_cache()

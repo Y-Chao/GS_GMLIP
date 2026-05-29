@@ -506,3 +506,37 @@ def test_remove_group_resets_cache():
     _ = intf.bondmatrix
     intf.remove_group([8, 9])
     assert "bondmatrix" not in intf.__dict__
+
+
+def test_add_adsorbate_after_fix_preserves_constraint_and_frees_adsorbate():
+    # load-bearing: after fixing the substrate then adding an adsorbate,
+    # the substrate FixAtoms must remain and the new atoms must stay free
+    intf = Interface(substrate=_slab())
+    intf.fix_substrate(layers=1)  # fixes substrate indices 0..3
+    intf.add_adsorbate(Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]]))
+    fixed = set()
+    for c in intf.interface.constraints:
+        if isinstance(c, FixAtoms):
+            fixed.update(int(i) for i in c.index)
+    assert fixed == {0, 1, 2, 3}  # substrate still fixed
+    assert 8 not in fixed and 9 not in fixed  # adsorbate free
+
+
+def test_remove_group_out_of_range_raises():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    with pytest.raises(ValueError):
+        intf.remove_group([99])
+
+
+def test_remove_partial_adsorbate_reclassifies_remainder():
+    # remove one atom of a CO; the remaining lone C is re-classified
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    intf.remove_group([9])  # drop the O, leaving lone C at index 8
+    assert len(intf.interface) == 9
+    # lone non-metal C with no metal nearby -> a size-1 adsorbate group
+    assert intf.adsList == [[8]]
+    assert intf.clusterList == []
