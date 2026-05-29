@@ -7,6 +7,9 @@ from typing import Optional
 
 from ase import Atoms
 from ase.constraints import FixAtoms
+from ase.io.jsonio import decode as ase_decode, encode as ase_encode
+from pymatgen.core import Structure
+from pymatgen.io.ase import AseAtomsAdaptor
 
 from gs_gmlip.interface.analysis import (
     classify_appended,
@@ -255,3 +258,72 @@ class Interface:
     def bottom_interface(self) -> None:
         """Align the appended region just above the slab top."""
         self.align_interface(loc="bottom")
+
+    def _select(self, part: str) -> Atoms:
+        if part == "interface":
+            return self.interface
+        if part == "substrate":
+            return self.substrate
+        raise ValueError(f"part must be 'interface' or 'substrate', got {part!r}")
+
+    def to_ase(self, part: str = "interface") -> Atoms:
+        """Return a copy of the chosen structure as ASE Atoms."""
+        return self._select(part).copy()
+
+    @classmethod
+    def from_ase(cls, atoms: Atoms, n_substrate: int, **kwargs) -> Interface:
+        """Build an Interface from a full Atoms, splitting at index n_substrate."""
+        substrate = atoms[:n_substrate]
+        return cls(substrate=substrate, interface=atoms.copy(), **kwargs)
+
+    def to_pymatgen(self, part: str = "interface") -> Structure:
+        """Return the chosen structure as a pymatgen Structure (escape hatch)."""
+        return AseAtomsAdaptor.get_structure(self._select(part))
+
+    @classmethod
+    def from_pymatgen(
+        cls, structure: Structure, n_substrate: int, **kwargs
+    ) -> Interface:
+        """Build an Interface from a pymatgen Structure, splitting at n_substrate."""
+        atoms = AseAtomsAdaptor.get_atoms(structure)
+        return cls.from_ase(atoms, n_substrate=n_substrate, **kwargs)
+
+    def to_dict(self) -> dict:
+        """JSON-serializable dict: interface, substrate size, and metadata."""
+        return {
+            "interface": ase_encode(self.interface),
+            "n_substrate": len(self.substrate),
+            "fix": list(self.fix),
+            "relax": list(self.relax),
+            "adsList": [list(g) for g in self.adsList],
+            "clusterList": [list(g) for g in self.clusterList],
+            "split_mol_on_cluster": self.split_mol_on_cluster,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Interface:
+        """Reconstruct an Interface produced by to_dict."""
+        interface = ase_decode(data["interface"])
+        n = data["n_substrate"]
+        substrate = interface[:n]
+        return cls(
+            substrate=substrate,
+            interface=interface,
+            fixlist=data.get("fix") or None,
+            relaxlist=data.get("relax") or None,
+            adsList=data.get("adsList"),
+            clusterList=data.get("clusterList"),
+            split_mol_on_cluster=data.get("split_mol_on_cluster", True),
+        )
+
+    def copy(self) -> Interface:
+        """Copy: new Atoms objects, same metadata and grouped lists."""
+        return Interface(
+            substrate=self.substrate.copy(),
+            interface=self.interface.copy(),
+            fixlist=list(self.fix) or None,
+            relaxlist=list(self.relax) or None,
+            adsList=[list(g) for g in self.adsList],
+            clusterList=[list(g) for g in self.clusterList],
+            split_mol_on_cluster=self.split_mol_on_cluster,
+        )

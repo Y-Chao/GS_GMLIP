@@ -6,6 +6,7 @@ import pytest
 from ase import Atoms
 from ase.build import bulk
 from ase.constraints import FixAtoms
+from pymatgen.core import Structure
 
 from gs_gmlip.interface import Interface
 
@@ -244,3 +245,91 @@ def test_align_interface_noop_without_adsorbate():
     # no appended atoms: align should be a no-op and not raise
     intf.align_interface(loc="bottom")
     assert len(intf.interface) == 8
+
+
+def test_to_ase_part_selection():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    assert len(intf.to_ase()) == 10
+    assert len(intf.to_ase(part="substrate")) == 8
+
+
+def test_to_ase_returns_copy():
+    intf = Interface(substrate=_slab())
+    a = intf.to_ase()
+    a.positions[0] += 5.0
+    assert not (a.get_positions()[0] == intf.interface.get_positions()[0]).all()
+
+
+def test_to_pymatgen_returns_structure():
+    slab = _slab()
+    slab.set_pbc(True)
+    intf = Interface(substrate=slab)
+    struct = intf.to_pymatgen()
+    assert isinstance(struct, Structure)
+    sub = intf.to_pymatgen(part="substrate")
+    assert isinstance(sub, Structure)
+
+
+def test_to_ase_invalid_part_raises():
+    intf = Interface(substrate=_slab())
+    with pytest.raises(ValueError):
+        intf.to_ase(part="bogus")
+
+
+def test_dict_roundtrip():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    d = intf.to_dict()
+    intf2 = Interface.from_dict(d)
+    assert len(intf2.interface) == 10
+    assert len(intf2.substrate) == 8
+    assert intf2.adsList == intf.adsList
+    assert intf2.fix == intf.fix
+
+
+def test_to_dict_is_json_serializable():
+    import json
+
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    s = json.dumps(intf.to_dict())  # must not raise
+    assert isinstance(s, str)
+
+
+def test_from_ase_splits_at_n_substrate():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface.from_ase(full, n_substrate=8)
+    assert len(intf.substrate) == 8
+    assert sorted(intf.adsList[0]) == [8, 9]
+
+
+def test_from_pymatgen_roundtrip():
+    slab = _slab()
+    slab.set_pbc(True)
+    intf = Interface(substrate=slab)
+    struct = intf.to_pymatgen()
+    rebuilt = Interface.from_pymatgen(struct, n_substrate=len(struct))
+    assert len(rebuilt.substrate) == 8
+
+
+def test_copy_is_independent():
+    intf = Interface(substrate=_slab())
+    clone = intf.copy()
+    clone.interface.positions[0] += 1.0
+    assert not (
+        clone.interface.get_positions()[0] == intf.interface.get_positions()[0]
+    ).all()
+
+
+def test_copy_preserves_grouped_lists():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    clone = intf.copy()
+    assert clone.adsList == intf.adsList
+    assert clone.fix == intf.fix
