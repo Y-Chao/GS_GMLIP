@@ -35,6 +35,7 @@ Contents
    :caption: API Reference
 
    api/structure
+   api/interface
    api/evaluate
    api/search
    api/data
