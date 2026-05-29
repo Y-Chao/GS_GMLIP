@@ -14,7 +14,14 @@ from ase import Atoms
 from ase.data import covalent_radii
 from pymatgen.core import Element
 
-from gs_gmlip.interface.constants import BOND_SCALE, CLOSED_SHELLS
+# Neighbor-graph bond cutoff: two atoms are bonded when their distance is
+# <= BOND_SCALE * (covalent_radius_i + covalent_radius_j).
+BOND_SCALE = 1.2
+
+# Atomic numbers of noble-gas closed shells, used by the valence-capacity
+# heuristic in compute_possible_bond: an atom "wants" as many bonds as its
+# distance to the nearest closed shell.
+CLOSED_SHELLS = np.array([2, 10, 18, 36, 54, 86])
 
 
 @lru_cache(maxsize=None)
