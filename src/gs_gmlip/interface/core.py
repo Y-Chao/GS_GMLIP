@@ -290,16 +290,10 @@ class Interface:
         return cls.from_ase(atoms, n_substrate=n_substrate, **kwargs)
 
     def to_dict(self) -> dict:
-        """JSON-serializable dict: interface, substrate size, and metadata."""
-        return {
-            "interface": ase_encode(self.interface),
-            "n_substrate": len(self.substrate),
-            "fix": list(self.fix),
-            "relax": list(self.relax),
-            "adsList": [list(g) for g in self.adsList],
-            "clusterList": [list(g) for g in self.clusterList],
-            "split_mol_on_cluster": self.split_mol_on_cluster,
-        }
+        """JSON-serializable dict capturing interface, substrate size, and metadata."""
+        data = self._metadata()
+        data["interface"] = ase_encode(self.interface)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> Interface:
@@ -360,15 +354,20 @@ class Interface:
         n = int(meta.get("n_substrate", len(atoms)))
         fix = cls._normalize_flat(meta.get("fix"))
         relax = cls._normalize_flat(meta.get("relax"))
-        ads = meta.get("adsList")
-        clu = meta.get("clusterList")
+        has_groups = "adsList" in meta or "clusterList" in meta
+        if has_groups:
+            ads_arg = cls._normalize_groups(meta.get("adsList"))
+            clu_arg = cls._normalize_groups(meta.get("clusterList"))
+        else:
+            ads_arg = None
+            clu_arg = None
         return cls(
             substrate=atoms[:n],
             interface=atoms,
             fixlist=fix,
             relaxlist=relax,
-            adsList=cls._normalize_groups(ads) if ads is not None else None,
-            clusterList=cls._normalize_groups(clu) if clu is not None else None,
+            adsList=ads_arg,
+            clusterList=clu_arg,
             split_mol_on_cluster=bool(meta.get("split_mol_on_cluster", True)),
         )
 
@@ -382,7 +381,7 @@ class Interface:
     def read(cls, path: str, **kwargs) -> Interface:
         """Read an interface written by Interface.write."""
         atoms = ase_read(path, **kwargs)
-        meta = atoms.info.get("gs_gmlip_interface", {})
+        meta = atoms.info.pop("gs_gmlip_interface", {})
         return cls._from_atoms_and_meta(atoms, meta)
 
     def write_db(self, db, **kvp):

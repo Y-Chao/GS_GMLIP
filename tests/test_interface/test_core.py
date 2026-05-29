@@ -403,3 +403,55 @@ def test_db_roundtrip_bare_slab(tmp_path):
     assert loaded.adsList == []
     assert loaded.clusterList == []
     assert loaded.fix == []
+
+
+def test_write_read_preserves_relax_and_custom_grouping(tmp_path):
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    # force a custom (non-derived) grouping + fix to prove they round-trip verbatim
+    intf = Interface(
+        substrate=slab,
+        interface=full,
+        fixlist=[0, 1],
+        adsList=[[8], [9]],
+        clusterList=[],
+    )
+    path = tmp_path / "custom.traj"
+    intf.write(str(path))
+    loaded = Interface.read(str(path))
+    assert loaded.fix == [0, 1]
+    assert loaded.relax == intf.relax
+    assert loaded.adsList == [[8], [9]]
+    assert loaded.clusterList == []
+    # leftover metadata key removed from reconstructed interface.info
+    assert "gs_gmlip_interface" not in loaded.interface.info
+
+
+def test_read_plain_file_without_metadata(tmp_path):
+    from ase.io import write as _w
+
+    # a plain Atoms file with NO gs_gmlip metadata -> everything is substrate
+    plain = _slab()
+    p = tmp_path / "plain.traj"
+    _w(str(p), plain)
+    loaded = Interface.read(str(p))
+    assert len(loaded.substrate) == 8
+    assert len(loaded.interface) == 8
+    assert loaded.adsList == []
+    assert loaded.clusterList == []
+
+
+def test_to_dict_includes_metadata_and_interface():
+    intf = Interface(substrate=_slab())
+    d = intf.to_dict()
+    # to_dict is _metadata() plus the encoded interface
+    for key in (
+        "n_substrate",
+        "fix",
+        "relax",
+        "adsList",
+        "clusterList",
+        "split_mol_on_cluster",
+        "interface",
+    ):
+        assert key in d
