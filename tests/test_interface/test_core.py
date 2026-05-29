@@ -455,3 +455,54 @@ def test_to_dict_includes_metadata_and_interface():
         "interface",
     ):
         assert key in d
+
+
+def test_add_adsorbate_appends_and_reclassifies():
+    intf = Interface(substrate=_slab())
+    co = Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    new_idx = intf.add_adsorbate(co)
+    assert new_idx == [8, 9]
+    assert len(intf.interface) == 10
+    assert sorted(intf.adsList[0]) == [8, 9]
+
+
+def test_add_adsorbate_with_offset():
+    intf = Interface(substrate=_slab())
+    o = Atoms("O", positions=[[0.0, 0.0, 0.0]])
+    new_idx = intf.add_adsorbate(o, offset=[2.0, 2.0, 4.0])
+    assert new_idx == [8]
+    # the atom landed at the offset position
+    assert (intf.interface.get_positions()[8] == [2.0, 2.0, 4.0]).all()
+
+
+def test_add_adsorbate_resets_cache():
+    intf = Interface(substrate=_slab())
+    _ = intf.bondmatrix
+    assert "bondmatrix" in intf.__dict__
+    intf.add_adsorbate(Atoms("O", positions=[[2.0, 2.0, 4.0]]))
+    assert "bondmatrix" not in intf.__dict__
+
+
+def test_remove_group_removes_atoms_and_reclassifies():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    assert sorted(intf.adsList[0]) == [8, 9]
+    intf.remove_group([8, 9])
+    assert len(intf.interface) == 8
+    assert intf.adsList == []
+
+
+def test_remove_group_rejects_substrate_indices():
+    intf = Interface(substrate=_slab())
+    with pytest.raises(ValueError):
+        intf.remove_group([0])  # cannot remove substrate atoms
+
+
+def test_remove_group_resets_cache():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    _ = intf.bondmatrix
+    intf.remove_group([8, 9])
+    assert "bondmatrix" not in intf.__dict__

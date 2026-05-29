@@ -252,6 +252,45 @@ class Interface:
         self.interface.set_positions(pos)
         self._reset_cache()
 
+    def add_adsorbate(self, mol: Atoms, offset=None) -> list[int]:
+        """Append a molecule/cluster to the interface, re-classify, reset cache.
+
+        Args:
+            mol: The adsorbate/cluster atoms to append.
+            offset: Optional (3,) translation applied to ``mol`` before appending.
+
+        Returns:
+            The interface indices of the newly added atoms.
+        """
+        start = len(self.interface)
+        addition = mol.copy()
+        if offset is not None:
+            addition.translate(offset)
+        self.interface += addition
+        new_indices = list(range(start, len(self.interface)))
+        self._init_ads_cluster(None, None)
+        self._reset_cache()
+        return new_indices
+
+    def remove_group(self, indices: list[int]) -> None:
+        """Remove the given interface atoms (must be in the appended region).
+
+        Re-classifies the remaining appended region and resets the cache.
+        """
+        n_sub = len(self.substrate)
+        if any(i < n_sub for i in indices):
+            raise ValueError("cannot remove substrate atoms via remove_group.")
+        keep = [i for i in range(len(self.interface)) if i not in set(indices)]
+        self.interface = self.interface[keep]
+        self._init_ads_cluster(None, None)
+        self._reset_cache()
+
+    def view(self):
+        """Open the interface in the ASE GUI (thin convenience passthrough)."""
+        from ase.visualize import view as ase_view
+
+        return ase_view(self.interface)
+
     def center_interface(self) -> None:
         """Align the appended region to the slab center."""
         self.align_interface(loc="center")
