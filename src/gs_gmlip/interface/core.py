@@ -15,6 +15,7 @@ from gs_gmlip.interface.analysis import (
     detect_layers,
     fingerprint as _fingerprint,
 )
+from gs_gmlip.interface.builders import primitive_slab_from_bulk, slab_from_bulk
 
 # Default cubic cell edge (Å) used when no cell is supplied.
 DEFAULT_CELL_EDGE = 10.0
@@ -135,3 +136,73 @@ class Interface:
         """Drop all cached_property values (call after any mutation)."""
         for key in self._CACHED:
             self.__dict__.pop(key, None)
+
+    def get_substrate_layers(self) -> int:
+        """Number of atomic layers in the substrate (z-clustering)."""
+        if len(self.substrate) == 0:
+            return 0
+        return int(self._layer_labels.max()) + 1
+
+    def fix_substrate(
+        self, layers: int | float, symmetry: Optional[str] = None
+    ) -> None:
+        """Fix the bottom layers of the substrate.
+
+        Args:
+            layers: If an int, fix the bottom ``layers`` atomic layers. If a
+                float, fix every substrate atom with z <= ``layers``.
+            symmetry: Reserved for Phase 2 (symmetric fixing); currently unused.
+
+        Sets ``self.fix`` (flat sorted list of ints), recomputes ``self.relax``,
+        applies a FixAtoms constraint to substrate and interface, and resets the
+        derived-data cache.
+        """
+        if isinstance(layers, bool):
+            raise TypeError("layers must be int or float, not bool")
+        if isinstance(layers, int):
+            labels = self._layer_labels
+            n_layers = int(labels.max()) + 1 if len(self.substrate) else 0
+            keep = set(range(min(layers, n_layers)))  # bottom layer indices
+            fixed = [i for i in range(len(self.substrate)) if labels[i] in keep]
+        else:
+            z = self.substrate.get_positions()[:, 2]
+            fixed = [i for i in range(len(self.substrate)) if z[i] <= layers]
+        self.fix = sorted(fixed)
+        self.relax = sorted(set(range(len(self.substrate))) - set(self.fix))
+        for atoms in (self.substrate, self.interface):
+            atoms.set_constraint(FixAtoms(indices=self.fix))
+        self._reset_cache()
+
+    def build_from_bulk(
+        self,
+        bulk_structure,
+        miller_index,
+        layer: int = 4,
+        vacuum: float = 15.0,
+        symmetry: bool = False,
+    ) -> None:
+        """Build substrate/interface from a bulk structure and Miller index."""
+        slab = slab_from_bulk(bulk_structure, miller_index, layer, vacuum, symmetry)
+        self.substrate = slab
+        self.interface = slab.copy()
+        self.fix, self.relax = [], list(range(len(slab)))
+        self.adsList, self.clusterList = [], []
+        self._reset_cache()
+
+    def build_primitive_surface_from_bulk(
+        self,
+        bulk_structure,
+        miller_index,
+        layer: int = 4,
+        vacuum: float = 15.0,
+        symmetry: bool = False,
+    ) -> None:
+        """Build a primitive-cell surface as substrate/interface."""
+        slab = primitive_slab_from_bulk(
+            bulk_structure, miller_index, layer, vacuum, symmetry
+        )
+        self.substrate = slab
+        self.interface = slab.copy()
+        self.fix, self.relax = [], list(range(len(slab)))
+        self.adsList, self.clusterList = [], []
+        self._reset_cache()

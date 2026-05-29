@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from ase import Atoms
+from ase.build import bulk
 from ase.constraints import FixAtoms
 
 from gs_gmlip.interface import Interface
@@ -92,3 +93,45 @@ def test_reset_cache_clears_entries():
     assert "bondmatrix" in intf.__dict__
     intf._reset_cache()
     assert "bondmatrix" not in intf.__dict__
+
+
+def test_get_substrate_layers_two():
+    intf = Interface(substrate=_slab())  # _slab has z=0 and z=2 -> 2 layers
+    assert intf.get_substrate_layers() == 2
+
+
+def test_fix_substrate_int_fixes_bottom_layer():
+    intf = Interface(substrate=_slab())
+    intf.fix_substrate(layers=1)  # fix bottom 1 layer (z=0 -> indices 0..3)
+    assert sorted(intf.fix) == [0, 1, 2, 3]
+    assert any(isinstance(c, FixAtoms) for c in intf.substrate.constraints)
+
+
+def test_fix_substrate_float_fixes_below_height():
+    intf = Interface(substrate=_slab())
+    intf.fix_substrate(layers=1.0)  # float -> fix atoms with z <= 1.0 (the z=0 layer)
+    assert sorted(intf.fix) == [0, 1, 2, 3]
+
+
+def test_fix_substrate_resets_cache():
+    intf = Interface(substrate=_slab())
+    _ = intf.bondmatrix
+    assert "bondmatrix" in intf.__dict__
+    intf.fix_substrate(layers=1)
+    assert "bondmatrix" not in intf.__dict__
+
+
+def test_build_from_bulk_sets_substrate():
+    intf = Interface()
+    intf.build_from_bulk(bulk("Pt", "fcc", a=3.92), (1, 1, 1), layer=3, vacuum=12.0)
+    assert len(intf.substrate) > 0
+    assert len(intf.interface) == len(intf.substrate)
+
+
+def test_build_primitive_surface_sets_substrate():
+    intf = Interface()
+    intf.build_primitive_surface_from_bulk(
+        bulk("Pt", "fcc", a=3.92), (1, 1, 1), layer=3, vacuum=12.0
+    )
+    assert len(intf.substrate) > 0
+    assert len(intf.interface) == len(intf.substrate)
