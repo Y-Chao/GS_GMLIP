@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 from ase import Atoms
 
 from gs_gmlip.interface.analysis import (
@@ -15,6 +16,7 @@ from gs_gmlip.interface.analysis import (
     compute_possible_bond,
     expected_bonds,
 )
+from gs_gmlip.interface.analysis import detect_layers, fingerprint
 
 
 def test_is_metal():
@@ -194,3 +196,18 @@ def test_compute_possible_bond_methane_saturated():
     pb = compute_possible_bond(ch4)
     assert pb[0] == 0  # carbon saturated
     assert all(pb[i] == 0 for i in range(1, 5))  # each H saturated
+
+
+def test_detect_layers_three_layers():
+    z = [0.0, 0.05, 0.0, 2.0, 2.0, 1.95, 4.0, 4.0, 4.0]
+    atoms = Atoms("H9", positions=[[0, 0, zi] for zi in z], cell=[10, 10, 10])
+    labels = detect_layers(atoms, tol=0.5)
+    assert labels.tolist() == [0, 0, 0, 1, 1, 1, 2, 2, 2]
+
+
+def test_fingerprint_is_deterministic_and_order_invariant():
+    a = Atoms("CO", positions=[[0, 0, 0], [0, 0, 1.13]], cell=[10, 10, 10])
+    b = Atoms("OC", positions=[[0, 0, 1.13], [0, 0, 0]], cell=[10, 10, 10])
+    fa, fb = fingerprint(a), fingerprint(b)
+    assert isinstance(fa, np.ndarray)
+    assert np.allclose(fa, fb)

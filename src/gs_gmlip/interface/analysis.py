@@ -23,6 +23,9 @@ BOND_SCALE = 1.2
 # distance to the nearest closed shell.
 CLOSED_SHELLS = np.array([2, 10, 18, 36, 54, 86])
 
+# Layer-detection z tolerance in Å: atoms within this z-spread share a layer.
+DEFAULT_LAYER_TOL = 0.5
+
 
 @lru_cache(maxsize=None)
 def is_metal(symbol: str) -> bool:
@@ -142,3 +145,44 @@ def compute_possible_bond(
         i: max(0, expected_bonds(int(numbers[i])) - int(current[i]))
         for i in range(len(atoms))
     }
+
+
+def detect_layers(atoms: Atoms, tol: float = DEFAULT_LAYER_TOL) -> np.ndarray:
+    """Assign each atom a layer index (0 = lowest z) by greedy z-clustering.
+
+    Atoms are sorted by z; a new layer starts when the gap to the previous
+    atom's z exceeds `tol`. Returns an int array of length len(atoms), indexed
+    in the atoms' original order.
+    """
+    if len(atoms) == 0:
+        return np.empty(0, dtype=int)
+    z = atoms.get_positions()[:, 2]
+    order = np.argsort(z)
+    labels = np.empty(len(atoms), dtype=int)
+    current = 0
+    prev_z = z[order[0]]
+    for rank, idx in enumerate(order):
+        if rank > 0 and (z[idx] - prev_z) > tol:
+            current += 1
+        labels[idx] = current
+        prev_z = z[idx]
+    return labels
+
+
+def fingerprint(atoms: Atoms) -> np.ndarray:
+    """Order-invariant structural fingerprint.
+
+    For every atom pair, compute (Z_i * Z_j) / distance, then return the sorted
+    vector of these values. Two structures that differ only by atom ordering
+    produce identical fingerprints. Returns an empty array for <2 atoms.
+    """
+    n = len(atoms)
+    if n < 2:
+        return np.zeros(0)
+    numbers = atoms.get_atomic_numbers()
+    feats = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = atoms.get_distance(i, j, mic=True)
+            feats.append(numbers[i] * numbers[j] / (d + 1e-9))
+    return np.sort(np.array(feats))
