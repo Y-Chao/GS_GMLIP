@@ -176,3 +176,21 @@ def test_compute_possible_bond_lone_oxygen():
     o = Atoms("O", positions=[[0, 0, 0]], cell=[10, 10, 10])
     pb = compute_possible_bond(o)
     assert pb == {0: 2}
+
+
+def test_compute_possible_bond_methane_saturated():
+    # CH4: central C has 4 bonds (expected 4 -> 0 free); each H has 1 bond (expected 1 -> 0)
+    ch4 = Atoms(
+        "CH4",
+        positions=[
+            [0.00, 0.00, 0.00],
+            [0.63, 0.63, 0.63],
+            [-0.63, -0.63, 0.63],
+            [-0.63, 0.63, -0.63],
+            [0.63, -0.63, -0.63],
+        ],
+        cell=[10, 10, 10],
+    )
+    pb = compute_possible_bond(ch4)
+    assert pb[0] == 0  # carbon saturated
+    assert all(pb[i] == 0 for i in range(1, 5))  # each H saturated
