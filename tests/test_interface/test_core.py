@@ -189,22 +189,45 @@ def test_wrap_resets_cache_and_wraps():
     assert intf.interface.get_positions()[0, 0] < slab.cell[0, 0]
 
 
-def test_align_bottom_shifts_adsorbate_down():
-    slab = _slab()
+def test_align_bottom_places_adsorbate_exactly_two_above_slab_top():
+    slab = _slab()  # slab spans z=0..2, top = 2.0
     full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
     intf = Interface(substrate=slab, interface=full)
     intf.align_interface(loc="bottom")
-    # adsorbate (index 8) z dropped toward the slab top (slab top is z=2)
-    assert intf.interface.get_positions()[8, 2] < 8.0
+    # appended min-z should sit exactly slab_top + 2.0 = 4.0
+    assert intf.interface.get_positions()[8, 2] == pytest.approx(4.0)
 
 
-def test_align_center_moves_adsorbate_near_slab_center():
-    slab = _slab()
+def test_align_center_places_mean_at_slab_midpoint():
+    slab = _slab()  # z midpoint = (0+2)/2 = 1.0
     full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
     intf = Interface(substrate=slab, interface=full)
     intf.align_interface(loc="center")
-    # slab spans z=0..2, center ~1.0; adsorbate should move down toward it
-    assert intf.interface.get_positions()[8, 2] < 8.0
+    assert intf.interface.get_positions()[8, 2] == pytest.approx(1.0)
+
+
+def test_align_leaves_substrate_positions_unchanged():
+    slab = _slab()
+    full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
+    intf = Interface(substrate=slab, interface=full)
+    before = intf.interface.get_positions()[:8].copy()
+    intf.align_interface(loc="bottom")
+    after = intf.interface.get_positions()[:8]
+    assert (before == after).all()
+
+
+def test_align_preserves_adsorbate_internal_spacing():
+    # a 2-atom adsorbate must translate rigidly (internal z-gap preserved)
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 8.0], [2.0, 2.0, 9.13]])
+    intf = Interface(substrate=slab, interface=full)
+    before_gap = (
+        full.get_positions()[9, 2] - full.get_positions()[8, 2]
+    )
+    intf.align_interface(loc="bottom")
+    pos = intf.interface.get_positions()
+    after_gap = pos[9, 2] - pos[8, 2]
+    assert after_gap == pytest.approx(before_gap)
 
 
 def test_align_interface_invalid_loc_raises():

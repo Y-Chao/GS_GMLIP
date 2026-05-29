@@ -211,7 +211,11 @@ class Interface:
         self._set_from_slab(slab)
 
     def wrap(self) -> None:
-        """Wrap interface atoms into the cell, then reset caches."""
+        """Wrap interface atoms into the cell, then reset caches.
+
+        No-op if the interface has no periodic boundary conditions (relies on
+        the cell's pbc).
+        """
         self.interface.wrap()
         self._reset_cache()
 
@@ -219,9 +223,10 @@ class Interface:
         """Shift the appended (adsorbate/cluster) region in z relative to the slab.
 
         Args:
-            loc: ``"center"`` places the appended atoms' center of mass at the
-                slab's z-midpoint; ``"bottom"`` drops the appended atoms so their
-                lowest atom sits ~2 Å above the slab's top atom.
+            loc: ``"center"`` places the appended atoms' MEAN z-coordinate
+                (not mass-weighted) at the slab's z-midpoint; ``"bottom"`` drops
+                the appended atoms so their lowest atom sits ~2 Å above the
+                slab's top atom.
 
         No-op when there are no appended atoms. Resets the derived-data cache.
         """
