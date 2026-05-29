@@ -7,6 +7,7 @@ from typing import Optional
 
 from ase import Atoms
 from ase.constraints import FixAtoms
+from ase.io import read as ase_read, write as ase_write
 from ase.io.jsonio import decode as ase_decode, encode as ase_encode
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -327,3 +328,70 @@ class Interface:
             clusterList=[list(g) for g in self.clusterList],
             split_mol_on_cluster=self.split_mol_on_cluster,
         )
+
+    def _metadata(self) -> dict:
+        """Serializable metadata describing the substrate/adsorbate partition."""
+        return {
+            "n_substrate": len(self.substrate),
+            "fix": list(self.fix),
+            "relax": list(self.relax),
+            "adsList": [list(g) for g in self.adsList],
+            "clusterList": [list(g) for g in self.clusterList],
+            "split_mol_on_cluster": self.split_mol_on_cluster,
+        }
+
+    @staticmethod
+    def _normalize_groups(groups) -> list[list[int]]:
+        """Coerce a possibly-array-of-arrays back to list[list[int]]."""
+        if groups is None:
+            return []
+        return [[int(i) for i in g] for g in groups]
+
+    @staticmethod
+    def _normalize_flat(seq) -> list[int]:
+        """Coerce a possibly-ndarray back to list[int]."""
+        if seq is None:
+            return []
+        return [int(i) for i in seq]
+
+    @classmethod
+    def _from_atoms_and_meta(cls, atoms: Atoms, meta: dict) -> Interface:
+        """Reconstruct from an Atoms + metadata dict (shared by read/from_db_row)."""
+        n = int(meta.get("n_substrate", len(atoms)))
+        fix = cls._normalize_flat(meta.get("fix"))
+        relax = cls._normalize_flat(meta.get("relax"))
+        ads = meta.get("adsList")
+        clu = meta.get("clusterList")
+        return cls(
+            substrate=atoms[:n],
+            interface=atoms,
+            fixlist=fix,
+            relaxlist=relax,
+            adsList=cls._normalize_groups(ads) if ads is not None else None,
+            clusterList=cls._normalize_groups(clu) if clu is not None else None,
+            split_mol_on_cluster=bool(meta.get("split_mol_on_cluster", True)),
+        )
+
+    def write(self, path: str, **kwargs) -> None:
+        """Write to any ASE format, embedding metadata in atoms.info."""
+        atoms = self.interface.copy()
+        atoms.info["gs_gmlip_interface"] = self._metadata()
+        ase_write(path, atoms, **kwargs)
+
+    @classmethod
+    def read(cls, path: str, **kwargs) -> Interface:
+        """Read an interface written by Interface.write."""
+        atoms = ase_read(path, **kwargs)
+        meta = atoms.info.get("gs_gmlip_interface", {})
+        return cls._from_atoms_and_meta(atoms, meta)
+
+    def write_db(self, db, **kvp):
+        """Write to an ase.db connection; metadata stored in the row data dict."""
+        return db.write(self.interface, data=self._metadata(), **kvp)
+
+    @classmethod
+    def from_db_row(cls, row) -> Interface:
+        """Reconstruct an Interface from an ase.db row written by write_db."""
+        atoms = row.toatoms()
+        meta = dict(row.data) if row.data else {}
+        return cls._from_atoms_and_meta(atoms, meta)

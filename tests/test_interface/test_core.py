@@ -363,3 +363,43 @@ def test_dict_roundtrip_bare_slab():
     assert intf2.clusterList == []
     assert intf2.fix == []
     assert intf2.relax == list(range(8))
+
+
+def test_write_read_roundtrip(tmp_path):
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    path = tmp_path / "intf.traj"
+    intf.write(str(path))
+    loaded = Interface.read(str(path))
+    assert len(loaded.interface) == 10
+    assert len(loaded.substrate) == 8
+    assert loaded.adsList == intf.adsList
+    assert loaded.fix == intf.fix
+
+
+def test_db_roundtrip(tmp_path):
+    from ase.db import connect
+
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    db = connect(str(tmp_path / "test.db"))
+    intf.write_db(db, name="trial")
+    row = db.get(name="trial")
+    loaded = Interface.from_db_row(row)
+    assert len(loaded.substrate) == 8
+    assert loaded.adsList == intf.adsList
+    assert loaded.fix == intf.fix
+
+
+def test_db_roundtrip_bare_slab(tmp_path):
+    from ase.db import connect
+
+    intf = Interface(substrate=_slab())
+    db = connect(str(tmp_path / "bare.db"))
+    intf.write_db(db, name="bare")
+    loaded = Interface.from_db_row(db.get(name="bare"))
+    assert loaded.adsList == []
+    assert loaded.clusterList == []
+    assert loaded.fix == []
