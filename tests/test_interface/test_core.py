@@ -550,3 +550,13 @@ def test_phase2_stubs_raise_not_implemented():
         intf.find_simple_ads_sites()
     with pytest.raises(NotImplementedError):
         intf.identify_symmetry()
+
+
+def test_from_dict_defaults_n_substrate_when_missing():
+    # a dict lacking n_substrate should not KeyError; everything treated as substrate
+    intf = Interface(substrate=_slab())
+    d = intf.to_dict()
+    del d["n_substrate"]  # simulate a hand-built / partial dict
+    rebuilt = Interface.from_dict(d)
+    assert len(rebuilt.substrate) == 8  # defaulted to len(atoms)
+    assert len(rebuilt.interface) == 8

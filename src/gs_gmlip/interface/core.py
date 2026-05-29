@@ -360,17 +360,7 @@ class Interface:
     def from_dict(cls, data: dict) -> Interface:
         """Reconstruct an Interface produced by to_dict."""
         interface = ase_decode(data["interface"])
-        n = data["n_substrate"]
-        substrate = interface[:n]
-        return cls(
-            substrate=substrate,
-            interface=interface,
-            fixlist=data.get("fix"),
-            relaxlist=data.get("relax"),
-            adsList=data.get("adsList"),
-            clusterList=data.get("clusterList"),
-            split_mol_on_cluster=data.get("split_mol_on_cluster", True),
-        )
+        return cls._from_atoms_and_meta(interface, data)
 
     def copy(self) -> Interface:
         """Copy: new Atoms objects, same metadata and grouped lists."""
