@@ -175,3 +175,49 @@ def test_build_from_bulk_clears_adsorbate_state():
     assert intf.adsList == []
     assert intf.clusterList == []
     assert intf.fix == []
+
+
+def test_wrap_resets_cache_and_wraps():
+    slab = _slab()
+    slab.positions[0] += slab.cell[0]  # push atom 0 outside cell along a
+    intf = Interface(substrate=slab.copy(), interface=slab.copy())
+    intf.interface.set_pbc([True, True, False])
+    _ = intf.bondmatrix
+    intf.wrap()
+    assert "bondmatrix" not in intf.__dict__
+    # atom 0 wrapped back inside the a-cell extent
+    assert intf.interface.get_positions()[0, 0] < slab.cell[0, 0]
+
+
+def test_align_bottom_shifts_adsorbate_down():
+    slab = _slab()
+    full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
+    intf = Interface(substrate=slab, interface=full)
+    intf.align_interface(loc="bottom")
+    # adsorbate (index 8) z dropped toward the slab top (slab top is z=2)
+    assert intf.interface.get_positions()[8, 2] < 8.0
+
+
+def test_align_center_moves_adsorbate_near_slab_center():
+    slab = _slab()
+    full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
+    intf = Interface(substrate=slab, interface=full)
+    intf.align_interface(loc="center")
+    # slab spans z=0..2, center ~1.0; adsorbate should move down toward it
+    assert intf.interface.get_positions()[8, 2] < 8.0
+
+
+def test_align_interface_invalid_loc_raises():
+    with pytest.raises(ValueError):
+        # no appended atoms -> early return, so add one to reach the loc check
+        slab = _slab()
+        full = slab + Atoms("C", positions=[[2.0, 2.0, 8.0]])
+        bad = Interface(substrate=slab, interface=full)
+        bad.align_interface(loc="nonsense")
+
+
+def test_align_interface_noop_without_adsorbate():
+    intf = Interface(substrate=_slab())
+    # no appended atoms: align should be a no-op and not raise
+    intf.align_interface(loc="bottom")
+    assert len(intf.interface) == 8

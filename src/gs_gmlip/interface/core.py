@@ -209,3 +209,44 @@ class Interface:
             bulk_structure, miller_index, layer, vacuum, symmetry
         )
         self._set_from_slab(slab)
+
+    def wrap(self) -> None:
+        """Wrap interface atoms into the cell, then reset caches."""
+        self.interface.wrap()
+        self._reset_cache()
+
+    def align_interface(self, loc: str = "center") -> None:
+        """Shift the appended (adsorbate/cluster) region in z relative to the slab.
+
+        Args:
+            loc: ``"center"`` places the appended atoms' center of mass at the
+                slab's z-midpoint; ``"bottom"`` drops the appended atoms so their
+                lowest atom sits ~2 Å above the slab's top atom.
+
+        No-op when there are no appended atoms. Resets the derived-data cache.
+        """
+        n_sub = len(self.substrate)
+        if len(self.interface) <= n_sub:
+            return
+        pos = self.interface.get_positions()
+        slab_top = pos[:n_sub, 2].max()
+        slab_bottom = pos[:n_sub, 2].min()
+        ads_z = pos[n_sub:, 2]
+        if loc == "bottom":
+            shift = (slab_top + 2.0) - ads_z.min()
+        elif loc == "center":
+            slab_mid = (slab_bottom + slab_top) / 2.0
+            shift = slab_mid - ads_z.mean()
+        else:
+            raise ValueError(f"unknown loc: {loc!r}")
+        pos[n_sub:, 2] += shift
+        self.interface.set_positions(pos)
+        self._reset_cache()
+
+    def center_interface(self) -> None:
+        """Align the appended region to the slab center."""
+        self.align_interface(loc="center")
+
+    def bottom_interface(self) -> None:
+        """Align the appended region just above the slab top."""
+        self.align_interface(loc="bottom")
