@@ -10,6 +10,11 @@ from gs_gmlip.interface.analysis import (
     is_metal,
 )
 from gs_gmlip.interface.analysis import classify_appended
+from gs_gmlip.interface.analysis import (
+    compute_bondmatrix,
+    compute_possible_bond,
+    expected_bonds,
+)
 
 
 def test_is_metal():
@@ -139,3 +144,35 @@ def test_classify_empty_returns_empty():
     ads, clu = classify_appended(_A())
     assert ads == []
     assert clu == []
+
+
+def test_expected_bonds_closed_shell():
+    assert expected_bonds(1) == 1   # H -> |1-2|
+    assert expected_bonds(8) == 2   # O -> |8-10|
+    assert expected_bonds(7) == 3   # N -> |7-10|
+    assert expected_bonds(6) == 4   # C -> min(|6-2|,|6-10|)
+    assert expected_bonds(78) == 8  # Pt -> |78-86|
+
+
+def test_compute_bondmatrix_symmetric_binary():
+    co = Atoms("CO", positions=[[0, 0, 0], [0, 0, 1.13]], cell=[10, 10, 10])
+    m = compute_bondmatrix(co)
+    assert m.shape == (2, 2)
+    assert m[0, 1] == 1 and m[1, 0] == 1
+    assert m[0, 0] == 0
+
+
+def test_compute_possible_bond_water():
+    h2o = Atoms(
+        "OHH",
+        positions=[[0, 0, 0], [0.76, 0.59, 0], [-0.76, 0.59, 0]],
+        cell=[10, 10, 10],
+    )
+    pb = compute_possible_bond(h2o)
+    assert pb == {0: 0, 1: 0, 2: 0}
+
+
+def test_compute_possible_bond_lone_oxygen():
+    o = Atoms("O", positions=[[0, 0, 0]], cell=[10, 10, 10])
+    pb = compute_possible_bond(o)
+    assert pb == {0: 2}

@@ -14,7 +14,7 @@ from ase import Atoms
 from ase.data import covalent_radii
 from pymatgen.core import Element
 
-from gs_gmlip.interface.constants import BOND_SCALE
+from gs_gmlip.interface.constants import BOND_SCALE, CLOSED_SHELLS
 
 
 @lru_cache(maxsize=None)
@@ -101,3 +101,37 @@ def classify_appended(
         cluster_groups.append(sorted(cluster))
 
     return ads_groups, cluster_groups
+
+
+def compute_bondmatrix(atoms: Atoms, bond_scale: float = BOND_SCALE) -> np.ndarray:
+    """Return an (N, N) integer adjacency matrix (1 = bonded, 0 = not, diag 0)."""
+    n = len(atoms)
+    matrix = np.zeros((n, n), dtype=int)
+    graph = build_neighbor_graph(atoms, bond_scale=bond_scale)
+    for i, j in graph.edges():
+        matrix[i, j] = 1
+        matrix[j, i] = 1
+    return matrix
+
+
+def expected_bonds(z: int) -> int:
+    """Expected bond capacity = distance from atomic number z to nearest closed shell.
+
+    Closed shells are the noble-gas atomic numbers (2, 10, 18, 36, 54, 86). The
+    smaller of the distances to the surrounding shells is how many bonds the atom
+    tends to form (H->1, O->2, N->3, C->4, Pt->8).
+    """
+    return int(np.min(np.abs(z - CLOSED_SHELLS)))
+
+
+def compute_possible_bond(
+    atoms: Atoms, bond_scale: float = BOND_SCALE
+) -> dict[int, int]:
+    """Return atom index -> number of *additional* bonds it can form (>= 0)."""
+    matrix = compute_bondmatrix(atoms, bond_scale=bond_scale)
+    current = matrix.sum(axis=1)
+    numbers = atoms.get_atomic_numbers()
+    return {
+        i: max(0, expected_bonds(int(numbers[i])) - int(current[i]))
+        for i in range(len(atoms))
+    }
