@@ -153,6 +153,12 @@ def detect_layers(atoms: Atoms, tol: float = DEFAULT_LAYER_TOL) -> np.ndarray:
     Atoms are sorted by z; a new layer starts when the gap to the previous
     atom's z exceeds `tol`. Returns an int array of length len(atoms), indexed
     in the atoms' original order.
+
+    Note:
+        Clustering is on consecutive z-gaps, not the spread from a layer's
+        start. This assumes layers are separated by gaps > tol; a gradual
+        z-drift where every consecutive gap is <= tol is lumped into one
+        ever-growing layer rather than split.
     """
     if len(atoms) == 0:
         return np.empty(0, dtype=int)

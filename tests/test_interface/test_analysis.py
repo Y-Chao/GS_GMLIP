@@ -205,6 +205,28 @@ def test_detect_layers_three_layers():
     assert labels.tolist() == [0, 0, 0, 1, 1, 1, 2, 2, 2]
 
 
+def test_detect_layers_single_atom():
+    atoms = Atoms("H", positions=[[0, 0, 1.0]], cell=[10, 10, 10])
+    assert detect_layers(atoms).tolist() == [0]
+
+
+def test_detect_layers_tol_boundary_not_split():
+    # gap exactly == tol must NOT start a new layer (strict > comparison)
+    atoms = Atoms("H2", positions=[[0, 0, 0.0], [0, 0, 0.5]], cell=[10, 10, 10])
+    assert detect_layers(atoms, tol=0.5).tolist() == [0, 0]
+
+
+def test_detect_layers_cumulative_drift_lumps_one_layer():
+    # documents the known limitation: each consecutive gap (0.4) <= tol (0.5),
+    # so all atoms collapse into one layer even though total spread is 1.2 Å
+    atoms = Atoms(
+        "H4",
+        positions=[[0, 0, 0.0], [0, 0, 0.4], [0, 0, 0.8], [0, 0, 1.2]],
+        cell=[10, 10, 10],
+    )
+    assert detect_layers(atoms, tol=0.5).tolist() == [0, 0, 0, 0]
+
+
 def test_fingerprint_is_deterministic_and_order_invariant():
     a = Atoms("CO", positions=[[0, 0, 0], [0, 0, 1.13]], cell=[10, 10, 10])
     b = Atoms("OC", positions=[[0, 0, 1.13], [0, 0, 0]], cell=[10, 10, 10])
