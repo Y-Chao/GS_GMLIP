@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-import numpy as np
 from ase import Atoms
 from ase.constraints import FixAtoms
 
@@ -59,28 +58,23 @@ class Interface:
         if fixlist is not None:
             if fixlist and (max(fixlist) >= n or min(fixlist) < 0):
                 raise ValueError("fixlist contains invalid atom indices.")
-            self.fix = list(fixlist)
+            self.fix = sorted({int(i) for i in fixlist})
         else:
-            self.fix = [
-                c.index
-                for c in self.substrate.constraints
-                if isinstance(c, FixAtoms)
-            ]
+            self.fix = sorted(
+                {
+                    int(i)
+                    for c in self.substrate.constraints
+                    if isinstance(c, FixAtoms)
+                    for i in c.index
+                }
+            )
 
         if relaxlist is not None:
             if relaxlist and (max(relaxlist) >= n or min(relaxlist) < 0):
                 raise ValueError("relaxlist contains invalid atom indices.")
-            self.relax = list(relaxlist)
+            self.relax = sorted({int(i) for i in relaxlist})
         else:
-            fixed = set(int(i) for i in self._flat_fix())
-            self.relax = sorted(set(range(n)) - fixed)
-
-    def _flat_fix(self) -> list[int]:
-        """Return self.fix flattened to a plain list of ints (handles array or list)."""
-        if len(self.fix) == 0:
-            return []
-        arr = np.atleast_1d(np.asarray(self.fix)).ravel()
-        return [int(i) for i in arr]
+            self.relax = sorted(set(range(n)) - set(self.fix))
 
     def _init_ads_cluster(self, adsList, clusterList) -> None:
         n_sub, n_int = len(self.substrate), len(self.interface)

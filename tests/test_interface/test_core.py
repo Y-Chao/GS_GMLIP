@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 from ase import Atoms
 from ase.constraints import FixAtoms
@@ -43,9 +42,33 @@ def test_init_reads_existing_fixatoms_constraint():
     slab = _slab()
     slab.set_constraint(FixAtoms(indices=[0, 1, 2, 3]))
     intf = Interface(substrate=slab)
-    assert sorted(np.concatenate(intf.fix).tolist()) == [0, 1, 2, 3]
+    assert intf.fix == [0, 1, 2, 3]
+    # relax is the complement
+    assert intf.relax == [4, 5, 6, 7]
 
 
 def test_repr_contains_interface():
     intf = Interface(substrate=_slab())
     assert "Interface" in repr(intf)
+
+
+def test_fix_is_flat_int_list_from_fixlist():
+    intf = Interface(substrate=_slab(), fixlist=[2, 0, 1])
+    assert intf.fix == [0, 1, 2]  # sorted, deduped, plain ints
+    assert all(isinstance(i, int) for i in intf.fix)
+
+
+def test_fix_matches_between_construction_paths():
+    # fixlist path and constraint path should yield identical flat fix lists
+    from ase.constraints import FixAtoms as _Fix
+
+    a = Interface(substrate=_slab(), fixlist=[0, 1, 2, 3])
+    slab = _slab()
+    slab.set_constraint(_Fix(indices=[0, 1, 2, 3]))
+    b = Interface(substrate=slab)
+    assert a.fix == b.fix == [0, 1, 2, 3]
+
+
+def test_relaxlist_explicit():
+    intf = Interface(substrate=_slab(), relaxlist=[4, 5])
+    assert intf.relax == [4, 5]
