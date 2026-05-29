@@ -14,25 +14,20 @@ def _to_structure(bulk_structure: Atoms | Structure) -> Structure:
     return AseAtomsAdaptor.get_structure(bulk_structure)
 
 
-def slab_from_bulk(
+def _build_slab(
     bulk_structure: Atoms | Structure,
     miller_index: tuple[int, int, int],
-    layer: int = 4,
-    vacuum: float = 15.0,
-    symmetry: bool = False,
+    layer: int,
+    vacuum: float,
+    symmetry: bool,
+    primitive: bool,
 ) -> Atoms:
-    """Build a slab from a bulk structure and Miller index, returned as ASE Atoms.
+    """Build a slab via pymatgen SlabGenerator and return the first termination as ASE Atoms.
 
-    Args:
-        bulk_structure: Bulk cell (ASE Atoms or pymatgen Structure).
-        miller_index: Miller index of the surface, e.g. (1, 1, 1).
-        layer: Minimum number of atomic layers (slab thickness, in layers).
-        vacuum: Vacuum thickness in Å added along the surface normal.
-        symmetry: If True, require symmetric (both surfaces equivalent) slabs.
+    Only the first slab returned by get_slabs (the lowest-energy / fewest-broken-
+    bonds termination) is used.
     """
     structure = _to_structure(bulk_structure)
-    # pymatgen 2026.5.4 defaults SlabGenerator(primitive=True); pass
-    # primitive=False here so this builds the conventional (non-primitive) slab.
     gen = SlabGenerator(
         structure,
         miller_index=miller_index,
@@ -40,10 +35,39 @@ def slab_from_bulk(
         min_vacuum_size=vacuum,
         in_unit_planes=True,
         center_slab=True,
-        primitive=False,
+        primitive=primitive,
     )
     slabs = gen.get_slabs(symmetrize=symmetry)
+    if not slabs:
+        raise ValueError(
+            f"No slab generated for miller_index={miller_index} "
+            f"(symmetry={symmetry}); try symmetry=False or adjust layer/vacuum."
+        )
     return AseAtomsAdaptor.get_atoms(slabs[0])
+
+
+def slab_from_bulk(
+    bulk_structure: Atoms | Structure,
+    miller_index: tuple[int, int, int],
+    layer: int = 4,
+    vacuum: float = 15.0,
+    symmetry: bool = False,
+) -> Atoms:
+    """Build a conventional-cell slab from a bulk structure and Miller index.
+
+    Args:
+        bulk_structure: Bulk cell (ASE Atoms or pymatgen Structure).
+        miller_index: Miller index of the surface, e.g. (1, 1, 1).
+        layer: Minimum number of atomic layers (slab thickness, in layers).
+        vacuum: Vacuum thickness in Å added along the surface normal.
+        symmetry: If True, require symmetric (both surfaces equivalent) slabs.
+
+    Returns:
+        The first (lowest-energy) termination as ASE Atoms.
+    """
+    return _build_slab(
+        bulk_structure, miller_index, layer, vacuum, symmetry, primitive=False
+    )
 
 
 def primitive_slab_from_bulk(
@@ -53,16 +77,11 @@ def primitive_slab_from_bulk(
     vacuum: float = 15.0,
     symmetry: bool = False,
 ) -> Atoms:
-    """Like slab_from_bulk but reduces the slab to its primitive surface cell."""
-    structure = _to_structure(bulk_structure)
-    gen = SlabGenerator(
-        structure,
-        miller_index=miller_index,
-        min_slab_size=layer,
-        min_vacuum_size=vacuum,
-        in_unit_planes=True,
-        center_slab=True,
-        primitive=True,
+    """Build a primitive-cell slab from a bulk structure and Miller index.
+
+    Same arguments as slab_from_bulk, but the slab is reduced to its primitive
+    surface cell. Returns the first (lowest-energy) termination as ASE Atoms.
+    """
+    return _build_slab(
+        bulk_structure, miller_index, layer, vacuum, symmetry, primitive=True
     )
-    slabs = gen.get_slabs(symmetrize=symmetry)
-    return AseAtomsAdaptor.get_atoms(slabs[0])
