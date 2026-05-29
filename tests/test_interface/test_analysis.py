@@ -113,3 +113,29 @@ def test_classify_no_split_keeps_whole_component():
     ads, clu = classify_appended(atoms, split_mol_on_cluster=False)
     assert ads == []
     assert sorted(clu[0]) == [0, 1, 2, 3, 4, 5]
+
+
+def test_classify_two_adsorbates_on_one_cluster():
+    # two separate CO molecules adsorbed on one Pt4 -> two adsorbate groups, one cluster
+    atoms = _pt4()
+    atoms += Atoms("CO", positions=[[0, 0, 2.0], [0, 0, 3.13]])
+    atoms += Atoms("CO", positions=[[2.6, 0, 2.0], [2.6, 0, 3.13]])
+    ads, clu = classify_appended(atoms, split_mol_on_cluster=True)
+    groups = sorted(sorted(g) for g in ads)
+    assert groups == [[4, 5], [6, 7]]
+    assert sorted(clu[0]) == [0, 1, 2, 3]
+
+
+def test_classify_lone_nonmetal_no_metal_is_adsorbate():
+    # a single O with no metal anywhere -> a size-1 adsorbate group (NOT a cluster)
+    o = Atoms("O", positions=[[0, 0, 0]], cell=[15, 15, 15])
+    ads, clu = classify_appended(o)
+    assert clu == []
+    assert ads == [[0]]
+
+
+def test_classify_empty_returns_empty():
+    from ase import Atoms as _A
+    ads, clu = classify_appended(_A())
+    assert ads == []
+    assert clu == []

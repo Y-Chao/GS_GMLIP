@@ -6,15 +6,18 @@ unit-tested without constructing an Interface.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import networkx as nx
 import numpy as np
 from ase import Atoms
 from ase.data import covalent_radii
 from pymatgen.core import Element
 
-from gs_gmlip.interface.constants import BOND_SCALE, DEFAULT_CLUSTER_MIN_SIZE
+from gs_gmlip.interface.constants import BOND_SCALE
 
 
+@lru_cache(maxsize=None)
 def is_metal(symbol: str) -> bool:
     """Return True if the element is a metal (pymatgen definition; metalloids -> False)."""
     return bool(Element(symbol).is_metal)
@@ -47,15 +50,9 @@ def connected_components(graph: nx.Graph) -> list[list[int]]:
     return [sorted(c) for c in nx.connected_components(graph)]
 
 
-def _component_has_metal(atoms: Atoms, indices: list[int]) -> bool:
-    syms = atoms.get_chemical_symbols()
-    return any(is_metal(syms[i]) for i in indices)
-
-
 def classify_appended(
     atoms: Atoms,
     split_mol_on_cluster: bool = True,
-    cluster_min_size: int = DEFAULT_CLUSTER_MIN_SIZE,
     bond_scale: float = BOND_SCALE,
 ) -> tuple[list[list[int]], list[list[int]]]:
     """Classify appended atoms into adsorbate groups and cluster groups.
@@ -65,8 +62,6 @@ def classify_appended(
         split_mol_on_cluster: If True, separate molecular adsorbate fragments
             from a bonded metal core; if False, a metal-containing component is
             kept whole as one cluster.
-        cluster_min_size: A metal-containing component smaller than this still
-            counts as a cluster (the value lets callers raise the threshold).
         bond_scale: Bond cutoff scale passed to build_neighbor_graph.
 
     Returns:
@@ -76,7 +71,10 @@ def classify_appended(
     Rule (split=True): within a metal-containing component, an adsorbate is each
     maximal connected non-metal fragment with >=1 internal non-metal bond (size
     >=2); all metal atoms plus any lone/atomic non-metals (size-1 fragments) form
-    the cluster.
+    the cluster. A component containing no metal is always one adsorbate group,
+    regardless of size (so a lone non-metal with no nearby metal is a size-1
+    adsorbate); the "lone non-metal joins the cluster" behavior applies only
+    within a metal-containing component.
     """
     syms = atoms.get_chemical_symbols()
     graph = build_neighbor_graph(atoms, bond_scale=bond_scale)
@@ -84,7 +82,7 @@ def classify_appended(
     cluster_groups: list[list[int]] = []
 
     for comp in connected_components(graph):
-        if not _component_has_metal(atoms, comp):
+        if not any(is_metal(syms[i]) for i in comp):
             ads_groups.append(sorted(comp))
             continue
         if not split_mol_on_cluster:
