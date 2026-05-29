@@ -72,3 +72,23 @@ def test_fix_matches_between_construction_paths():
 def test_relaxlist_explicit():
     intf = Interface(substrate=_slab(), relaxlist=[4, 5])
     assert intf.relax == [4, 5]
+
+
+def test_cached_properties_present_and_cached():
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(substrate=slab, interface=full)
+    bm1 = intf.bondmatrix
+    assert bm1.shape == (10, 10)
+    assert intf.bondmatrix is bm1  # cached: identical object on 2nd access
+    assert isinstance(intf.possible_bond, dict)
+    import numpy as np
+    assert isinstance(intf.fingerprint, np.ndarray)
+
+
+def test_reset_cache_clears_entries():
+    intf = Interface(substrate=_slab())
+    _ = intf.bondmatrix
+    assert "bondmatrix" in intf.__dict__
+    intf._reset_cache()
+    assert "bondmatrix" not in intf.__dict__

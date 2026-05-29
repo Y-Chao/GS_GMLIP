@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from functools import cached_property
 from typing import Optional
 
 from ase import Atoms
 from ase.constraints import FixAtoms
 
-from gs_gmlip.interface.analysis import classify_appended
+from gs_gmlip.interface.analysis import (
+    classify_appended,
+    compute_bondmatrix,
+    compute_possible_bond,
+    detect_layers,
+    fingerprint as _fingerprint,
+)
 
 # Default cubic cell edge (Å) used when no cell is supplied.
 DEFAULT_CELL_EDGE = 10.0
@@ -101,3 +108,30 @@ class Interface:
             f"== Interface ==\n\tSubstrate: {self.substrate}\n"
             f"\tInterface: {self.interface}"
         )
+
+    _CACHED = ("bondmatrix", "possible_bond", "fingerprint", "_layer_labels")
+
+    @cached_property
+    def bondmatrix(self):
+        """(N, N) integer adjacency matrix of the full interface (cached)."""
+        return compute_bondmatrix(self.interface)
+
+    @cached_property
+    def possible_bond(self) -> dict[int, int]:
+        """Atom index -> additional bonds it can form (valence capacity, cached)."""
+        return compute_possible_bond(self.interface)
+
+    @cached_property
+    def fingerprint(self):
+        """Order-invariant structural fingerprint of the interface (cached)."""
+        return _fingerprint(self.interface)
+
+    @cached_property
+    def _layer_labels(self):
+        """Per-atom substrate layer index (cached)."""
+        return detect_layers(self.substrate)
+
+    def _reset_cache(self) -> None:
+        """Drop all cached_property values (call after any mutation)."""
+        for key in self._CACHED:
+            self.__dict__.pop(key, None)
