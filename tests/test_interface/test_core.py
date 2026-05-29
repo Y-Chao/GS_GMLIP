@@ -540,3 +540,13 @@ def test_remove_partial_adsorbate_reclassifies_remainder():
     # lone non-metal C with no metal nearby -> a size-1 adsorbate group
     assert intf.adsList == [[8]]
     assert intf.clusterList == []
+
+
+def test_phase2_stubs_raise_not_implemented():
+    intf = Interface(substrate=_slab())
+    with pytest.raises(NotImplementedError):
+        intf.find_all_ads_sites()
+    with pytest.raises(NotImplementedError):
+        intf.find_simple_ads_sites()
+    with pytest.raises(NotImplementedError):
+        intf.identify_symmetry()

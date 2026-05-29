@@ -290,6 +290,23 @@ class Interface:
         self._init_ads_cluster(None, None)
         self._reset_cache()
 
+    def find_all_ads_sites(self):
+        """Find all symmetry-distinct adsorption sites (Phase 2, not yet implemented)."""
+        raise NotImplementedError(
+            "find_all_ads_sites is planned for Phase 2 "
+            "(pymatgen AdsorbateSiteFinder)."
+        )
+
+    def find_simple_ads_sites(self, height_threshold: float = 2.0):
+        """Find simple adsorption sites (Phase 2, not yet implemented)."""
+        raise NotImplementedError("find_simple_ads_sites is planned for Phase 2.")
+
+    def identify_symmetry(self, method: str = "wood") -> str:
+        """Identify surface symmetry / Wood notation (Phase 2, not yet implemented)."""
+        raise NotImplementedError(
+            "identify_symmetry is planned for Phase 2 (Wood/matrix notation)."
+        )
+
     def view(self):
         """Open the interface in the ASE GUI (thin convenience passthrough)."""
         from ase.visualize import view as ase_view
