@@ -560,3 +560,51 @@ def test_from_dict_defaults_n_substrate_when_missing():
     rebuilt = Interface.from_dict(d)
     assert len(rebuilt.substrate) == 8  # defaulted to len(atoms)
     assert len(rebuilt.interface) == 8
+
+
+def test_get_substrate_layers_cu100_real_slab(cu100_slab):
+    intf = Interface(substrate=cu100_slab)
+    assert intf.get_substrate_layers() == 4
+
+
+def test_fix_substrate_one_layer_on_cu100_fixes_bottom_36(cu100_slab):
+    intf = Interface(substrate=cu100_slab)
+    intf.fix_substrate(layers=1)
+    assert len(intf.fix) == 36
+    # all fixed atoms are at the lowest z
+    z = intf.substrate.get_positions()[:, 2]
+    assert max(z[i] for i in intf.fix) < min(z[i] for i in intf.relax)
+
+
+def test_fix_substrate_two_layers_on_cu100_fixes_bottom_72(cu100_slab):
+    intf = Interface(substrate=cu100_slab)
+    intf.fix_substrate(layers=2)
+    assert len(intf.fix) == 72
+    assert len(intf.relax) == 72
+
+
+def test_to_pymatgen_roundtrip_on_real_cu_slab(cu100_slab):
+    intf = Interface(substrate=cu100_slab)
+    struct = intf.to_pymatgen()
+    rebuilt = Interface.from_pymatgen(struct, n_substrate=len(struct))
+    # species and counts preserved
+    assert rebuilt.substrate.get_chemical_formula() == cu100_slab.get_chemical_formula()
+    assert len(rebuilt.substrate) == len(cu100_slab)
+
+
+def test_end_to_end_cu100_plus_co_adsorbate(cu100_slab, cu100_with_co):
+    # build the Interface from the combined structure; classification should
+    # identify the CO as one adsorbate group at indices [144, 145]
+    intf = Interface(substrate=cu100_slab, interface=cu100_with_co)
+    assert intf.adsList == [[144, 145]]
+    assert intf.clusterList == []
+    # adding fix on substrate + the CO should keep the adsorbate free
+    intf.fix_substrate(layers=2)
+    fixed = set(intf.fix)
+    assert 144 not in fixed and 145 not in fixed
+
+
+def test_pt111_slab_built_with_ase_has_six_layers(pt111_slab):
+    intf = Interface(substrate=pt111_slab)
+    assert intf.get_substrate_layers() == 6
+    assert len(intf.substrate) == 96

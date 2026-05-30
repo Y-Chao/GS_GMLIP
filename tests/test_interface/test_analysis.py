@@ -233,3 +233,50 @@ def test_fingerprint_is_deterministic_and_order_invariant():
     fa, fb = fingerprint(a), fingerprint(b)
     assert isinstance(fa, np.ndarray)
     assert np.allclose(fa, fb)
+
+
+def test_classify_co_on_cu100_real_slab(cu100_with_co, cu100_slab):
+    # Cu(100) + CO: appended is just the CO (indices in the FULL structure are after the slab).
+    # classify_appended takes the appended region only; check it as if isolated.
+    appended = cu100_with_co[len(cu100_slab):]
+    ads, clu = classify_appended(appended)
+    assert ads == [[0, 1]]
+    assert clu == []
+
+
+def test_classify_two_co_on_cu100_two_adsorbate_groups(cu100_with_two_co, cu100_slab):
+    appended = cu100_with_two_co[len(cu100_slab):]
+    ads, clu = classify_appended(appended)
+    assert sorted(ads) == [[0, 1], [2, 3]]
+    assert clu == []
+
+
+def test_classify_lone_co_on_graphene_is_cluster(cocn_sheet):
+    # Treating the graphene+N as substrate, just the Co (last atom) as appended.
+    appended = cocn_sheet[158:]
+    ads, clu = classify_appended(appended)
+    assert ads == []
+    assert clu == [[0]]
+
+
+def test_classify_full_cocn_documents_cutoff_limitation(cocn_sheet):
+    # Passing the whole Co-N4 sheet as appended highlights the neighbor-graph
+    # cutoff limitation: the Co atom is NOT bonded to the N at this geometry under
+    # the simple covalent-radius cutoff, so it separates out as a size-1 cluster
+    # while the graphene+N network is one large no-metal adsorbate component.
+    ads, clu = classify_appended(cocn_sheet)
+    # exactly one ads group (the 158-atom C+N network) and one size-1 cluster (the Co)
+    assert len(ads) == 1 and len(ads[0]) == 158
+    assert len(clu) == 1 and len(clu[0]) == 1
+
+
+def test_neighbor_graph_on_periodic_cu_slab(cu100_slab):
+    # Real periodic slab: every Cu in the bottom layer should bond to at least
+    # one neighbor in the same layer (4 in-plane Cu-Cu bonds at ~2.7 Å).
+    g = build_neighbor_graph(cu100_slab)
+    # bottom-layer atoms: z near 10.0
+    z = cu100_slab.get_positions()[:, 2]
+    bottom = [i for i, zi in enumerate(z) if abs(zi - z.min()) < 0.1]
+    assert len(bottom) == 36
+    # each bottom atom should have at least one in-plane neighbor
+    assert all(g.degree(i) >= 1 for i in bottom)
