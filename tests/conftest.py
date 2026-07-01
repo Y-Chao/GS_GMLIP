@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import pytest
@@ -50,7 +51,36 @@ def cu100_with_two_co(cu100_slab, co_molecule) -> Atoms:
     """Cu(100) slab + two CO molecules at different (x,y) above the top layer."""
     top = cu100_slab.get_positions()[:, 2].max()
     co1 = co_molecule.copy()
-    co1.translate([5.0, 5.0, top + 2.0])
+    co1.translate([0.0, 0.0, top + 2.0])
     co2 = co_molecule.copy()
-    co2.translate([10.0, 5.0, top + 2.0])
+    co2.translate([5.0, 5.0, top + 2.0])
     return cu100_slab + co1 + co2
+
+
+@pytest.fixture
+def cu100_with_ten_co(cu100_slab, co_molecule) -> Atoms:
+    """Cu(100) slab + ten CO molecules at different (x,y) above the top layer."""
+    top = cu100_slab.get_positions()[:, 2].max()
+    atoms = cu100_slab.copy()
+    top_site = [
+        atoms[i] for i in range(len(atoms)) if atoms.positions[i, 2] > top - 0.2
+    ]
+    random.shuffle(top_site)
+    for i in range(10):
+        co = co_molecule.copy()
+        co.translate([top_site[i][0], top_site[i][1], top + 2.0])
+        atoms += co
+    return atoms
+
+
+@pytest.fixture
+def cu100_with_ten_cu_cluster(cu100_slab) -> Atoms:
+    """Cu(100) slab + ten Cu atoms in a cluster above the top layer."""
+    top = cu100_slab.get_positions()[:, 2].max()
+    atoms = cu100_slab.copy()
+    from ase.cluster import Icosahedron
+
+    cu_cluster = Icosahedron("Cu", 2)  # 13-atom Cu cluster
+    cu_cluster.translate([5.0, 5.0, top + 2.0])
+    atoms += cu_cluster
+    return atoms

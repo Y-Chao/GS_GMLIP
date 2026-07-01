@@ -5,10 +5,13 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Optional
 
+import numpy as np
 from ase import Atoms
 from ase.constraints import FixAtoms
-from ase.io import read as ase_read, write as ase_write
-from ase.io.jsonio import decode as ase_decode, encode as ase_encode
+from ase.io import read as ase_read
+from ase.io import write as ase_write
+from ase.io.jsonio import decode as ase_decode
+from ase.io.jsonio import encode as ase_encode
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 
@@ -17,12 +20,14 @@ from gs_gmlip.interface.analysis import (
     compute_bondmatrix,
     compute_possible_bond,
     detect_layers,
+)
+from gs_gmlip.interface.analysis import (
     fingerprint as _fingerprint,
 )
 from gs_gmlip.interface.builders import primitive_slab_from_bulk, slab_from_bulk
 
-# Default cubic cell edge (Å) used when no cell is supplied.
-DEFAULT_CELL_EDGE = 10.0
+# Default cell edge length (Å) used when substrate has no cell set.
+DEFAULT_CELL_EDGE = 20.0
 
 
 class Interface:
@@ -47,9 +52,7 @@ class Interface:
         self.split_mol_on_cluster = split_mol_on_cluster
 
         self.substrate = substrate if substrate is not None else Atoms()
-        self.interface = (
-            interface if interface is not None else self.substrate.copy()
-        )
+        self.interface = interface if interface is not None else self.substrate.copy()
 
         self._init_cell(**kwargs)
         self._init_fix_relax(fixlist, relaxlist)

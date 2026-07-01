@@ -16,3 +16,6 @@ docs/_build/
 # Environment files
 .env
 .venv/
+
+# Development files
+dev/

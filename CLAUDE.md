@@ -24,15 +24,15 @@ uv pip install -e ".[dev]"      # black, isort, ruff, pytest, sphinx
 uv pip install -e ".[all]"      # everything
 
 # Run all tests
-uv pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run a single test file or test
-uv pytest tests/test_gcmc.py -v
-uv pytest tests/test_gcmc.py::test_insert_move -v
+uv run pytest tests/test_gcmc.py -v
+uv run pytest tests/test_gcmc.py::test_insert_move -v
 
 # Lint / format (configured in pyproject.toml — line length 120, py312)
-uv ruff format check gs_gmlip/ tests/
-uv ruff check gs_gmlip/ tests/
+uv run ruff format check gs_gmlip/ tests/
+uv run ruff check gs_gmlip/ tests/
 
 # CLI entry point (registered as `gs_gmlip = gs_gmlip.cli:main`)
 gs_gmlip --config config.yaml
