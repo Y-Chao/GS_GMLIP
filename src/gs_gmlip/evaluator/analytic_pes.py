@@ -210,7 +210,7 @@ def _wolfe_quapp(x, y, params: dict, xp) -> Any:
         + 0.1 * y
     )
     if p.get("local_soft", False):
-        v += p["A_local"] * xp.exp(-((x - p["x0_local"]) ** 2) / (2 * p["sigma_local"] ** 2))
+        v += p["A_local"] * xp.exp(-(x - p["x0_local"]) / (2 * p["sigma_local"]))
     return v
 
 
