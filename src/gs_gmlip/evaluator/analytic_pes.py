@@ -1,252 +1,207 @@
-"""It defines a series of analytic potential energy surfaces (PES)."""
+"""Analytic 2D potential energy surfaces for benchmarking global-search algorithms."""
 from __future__ import annotations
 
-__author__ = "Chao Yang"
-__version__ = "1.0"
-
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
 import numpy as np
 from matplotlib import pyplot as plt
 
 try:
     import jax
     import jax.numpy as jnp
-except ImportError:
+except ImportError:  # pragma: no cover
     jax = None
     jnp = None
 
-from gs_gmlip import utils
-
-"""
-Implementation of the expressions of analytic potential energy surface (PES) and its derivatives.
-
-Functions include:
-- muller_brown_potential: Calculate the Muller-Brown potential at given coordinates.
-- muller_brown_potential_three_stats: A variant of the Muller-Brown potential with three stationary points.
-- leps_potential: Calculate the LEPS potential at given coordinates.
-- leps_potential_harmonic: Calculate the LEPS potential with a harmonic term at given coordinates.
-- wolfe_quapp_potential: Calculate the Wolfe-Quapp potential at given coordinates.
-- wolfe_quapp_potential_local_soft: A variant of the Wolfe-Quapp potential with a local softening term.
-"""
+# ---------------------------------------------------------------------------
+# PES registry
+# ---------------------------------------------------------------------------
 
 
-def muller_brown_potential(x, y, xp=jnp):
+@dataclass(frozen=True)
+class PESConfig:
+    """Configuration for one named analytic PES.
+
+    Attributes:
+        name: Human-readable label (key in REGISTRY).
+        family: Mathematical family -- ``"muller_brown"``, ``"leps"``, or ``"wolfe_quapp"``.
+        params: Family-specific coefficients as a flat dict.
+        x_range: Default x-axis range ``(x_min, x_max)``.
+        y_range: Default y-axis range ``(y_min, y_max)``.
+        z_max: Clipping value for contour plots.
     """
-    Calculate the Muller-Brown potential at coordinates (x, y).
-    This is a 2D potential function commonly used in optimization problems.
 
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
+    name: str
+    family: str
+    params: dict[str, Any]
+    x_range: tuple[float, float]
+    y_range: tuple[float, float]
+    z_max: float
 
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    prefactor = 0.15
-    A = xp.array([-200, -100, -170, 15])
-    a = xp.array([-1, -1, -6.5, 0.7])
-    b = xp.array([0, 0, 11, 0.6])
-    c = xp.array([-10, -10, -6.5, 0.7])
-    x0 = xp.array([1, 0, -0.5, -1])
-    y0 = xp.array([0, 0.5, 1.5, 1])
-    offset = -146.7
 
-    v = -prefactor * offset
+REGISTRY: dict[str, PESConfig] = {
+    "muller_brown": PESConfig(
+        name="muller_brown",
+        family="muller_brown",
+        params={
+            "prefactor": 0.15,
+            "A": [-200, -100, -170, 15],
+            "a": [-1, -1, -6.5, 0.7],
+            "b": [0, 0, 11, 0.6],
+            "c": [-10, -10, -6.5, 0.7],
+            "x0": [1, 0, -0.5, -1],
+            "y0": [0, 0.5, 1.5, 1],
+            "offset": -146.7,
+        },
+        x_range=(-1.75, 1.25),
+        y_range=(-0.5, 2.5),
+        z_max=24,
+    ),
+    "muller_brown_three_stats": PESConfig(
+        name="muller_brown_three_stats",
+        family="muller_brown",
+        params={
+            "prefactor": 0.15,
+            "A": [-280, -170, -170, 15],
+            "a": [-15, -1, -6.5, 0.7],
+            "b": [0, 0, 11, 0.6],
+            "c": [-10, -10, -6.5, 0.7],
+            "x0": [1, 0.2, -0.5, -1],
+            "y0": [0, 0.5, 1.5, 1],
+            "offset": -146.7,
+        },
+        x_range=(-1.75, 1.25),
+        y_range=(-0.5, 2.5),
+        z_max=24,
+    ),
+    "leps": PESConfig(
+        name="leps",
+        family="leps",
+        params={
+            "a": 0.05,
+            "b": 0.30,
+            "c": 0.05,
+            "d_ab": 4.746,
+            "d_bc": 4.746,
+            "d_ac": 3.445,
+            "r0": 0.742,
+            "alpha": 1.942,
+            "harmonic": False,
+        },
+        x_range=(0, 4),
+        y_range=(0, 4),
+        z_max=2,
+    ),
+    "leps_harmonic": PESConfig(
+        name="leps_harmonic",
+        family="leps",
+        params={
+            "a": 0.05,
+            "b": 0.30,
+            "c": 0.05,
+            "d_ab": 4.746,
+            "d_bc": 4.746,
+            "d_ac": 3.445,
+            "r0": 0.742,
+            "alpha": 1.942,
+            "harmonic": True,
+        },
+        x_range=(0, 4),
+        y_range=(0, 4),
+        z_max=2,
+    ),
+    "wolfe_quapp": PESConfig(
+        name="wolfe_quapp",
+        family="wolfe_quapp",
+        params={
+            "a": 1,
+            "b": 1,
+            "local_soft": False,
+        },
+        x_range=(-2, 2),
+        y_range=(-2, 2),
+        z_max=2,
+    ),
+    "wolfe_quapp_local_soft": PESConfig(
+        name="wolfe_quapp_local_soft",
+        family="wolfe_quapp",
+        params={
+            "a": 1,
+            "b": 1,
+            "local_soft": True,
+            "A_local": 5,
+            "x0_local": -1.17,
+            "sigma_local": 0.2,
+        },
+        x_range=(-2, 2),
+        y_range=(-2, 2),
+        z_max=2,
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# Family implementations -- one function per mathematical form
+# ---------------------------------------------------------------------------
+
+
+def _muller_brown(x, y, params: dict, xp) -> Any:
+    """Sum of four Gaussian terms (Muller-Brown family)."""
+    p = params
+    pfac = p["prefactor"]
+    v = -pfac * p["offset"]
     for i in range(4):
-        v += (
-            prefactor
-            * A[i]
-            * xp.exp(
-                a[i] * (x - x0[i]) ** 2
-                + b[i] * (x - x0[i]) * (y - y0[i])
-                + c[i] * (y - y0[i]) ** 2
-            )
+        dx = x - p["x0"][i]
+        dy = y - p["y0"][i]
+        v += pfac * p["A"][i] * xp.exp(
+            p["a"][i] * dx**2 + p["b"][i] * dx * dy + p["c"][i] * dy**2
         )
     return v
 
 
-def muller_brown_potential_three_stats(x, y, xp=jnp):
-    """
-    Calculate the Muller-Brown potential at coordinates (x, y).
-    This is a 2D potential function commonly used in optimization problems.
+def _leps(x, y, params: dict, xp) -> Any:
+    """LEPS potential with optional harmonic tail."""
+    p = params
+    a, b, c = p["a"], p["b"], p["c"]
+    d_ab, d_bc, d_ac = p["d_ab"], p["d_bc"], p["d_ac"]
+    r0 = p["r0"]
+    alpha = p["alpha"]
 
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
+    rab, rbc, rac = x, y, x + y
 
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    prefactor = 0.15
-    A = xp.array([-280, -170, -170, 15])
-    a = xp.array([-15, -1, -6.5, 0.7])
-    b = xp.array([0, 0, 11, 0.6])
-    c = xp.array([-10, -10, -6.5, 0.7])
-    x0 = xp.array([1, 0.2, -0.5, -1])
-    y0 = xp.array([0, 0.5, 1.5, 1])
-    offset = -146.7
+    def _q(d, r):
+        return 0.5 * d * (1.5 * xp.exp(-2 * alpha * (r - r0)) - xp.exp(-alpha * (r - r0)))
 
-    v = -prefactor * offset
-    for i in range(4):
-        v += (
-            prefactor
-            * A[i]
-            * xp.exp(
-                a[i] * (x - x0[i]) ** 2
-                + b[i] * (x - x0[i]) * (y - y0[i])
-                + c[i] * (y - y0[i]) ** 2
-            )
-        )
-    return v
+    def _j(d, r):
+        return 0.25 * d * (xp.exp(-2 * alpha * (r - r0)) - 6 * xp.exp(-alpha * (r - r0)))
 
-
-def leps_potential(x, y, xp=jnp):
-    """
-    Calculate the LEPS potential at coordinates (x, y).
-    This is a 2D potential function commonly used in optimization problems.
-
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
-
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    a = 0.05
-    b = 0.30
-    c = 0.05
-    dab = 4.746
-    dbc = 4.746
-    dac = 3.445
-    r0 = 0.742
-    alpha = 1.942
-
-    rab = x
-    rbc = y
-    rac = x + y
-
-    qab = (
-        0.5
-        * dab
-        * (1.5 * xp.exp(-2 * alpha * (rab - r0)) - xp.exp(-alpha * (rab - r0)))
-    )
-    qbc = (
-        0.5
-        * dbc
-        * (1.5 * xp.exp(-2 * alpha * (rbc - r0)) - xp.exp(-alpha * (rbc - r0)))
-    )
-    qac = (
-        0.5
-        * dac
-        * (1.5 * xp.exp(-2 * alpha * (rac - r0)) - xp.exp(-alpha * (rac - r0)))
-    )
-    jab = (
-        0.25 * dab * (xp.exp(-2 * alpha * (rab - r0)) - 6 * xp.exp(-alpha * (rab - r0)))
-    )
-    jbc = (
-        0.25 * dbc * (xp.exp(-2 * alpha * (rbc - r0)) - 6 * xp.exp(-alpha * (rbc - r0)))
-    )
-    jac = (
-        0.25 * dac * (xp.exp(-2 * alpha * (rac - r0)) - 6 * xp.exp(-alpha * (rac - r0)))
-    )
+    q_ab, q_bc, q_ac = _q(d_ab, rab), _q(d_bc, rbc), _q(d_ac, rac)
+    j_ab, j_bc, j_ac = _j(d_ab, rab), _j(d_bc, rbc), _j(d_ac, rac)
 
     v = (
-        qab / (1 + a)
-        + qbc / (1 + b)
-        + qac / (1 + c)
+        q_ab / (1 + a)
+        + q_bc / (1 + b)
+        + q_ac / (1 + c)
         - xp.sqrt(
-            jab**2 / (1 + a) ** 2
-            + jbc**2 / (1 + b) ** 2
-            + jac**2 / (1 + c) ** 2
-            - jab * jbc / (1 + a) / (1 + b)
-            - jbc * jac / (1 + b) / (1 + c)
-            - jab * jac / (1 + a) / (1 + c)
+            j_ab**2 / (1 + a) ** 2
+            + j_bc**2 / (1 + b) ** 2
+            + j_ac**2 / (1 + c) ** 2
+            - j_ab * j_bc / ((1 + a) * (1 + b))
+            - j_bc * j_ac / ((1 + b) * (1 + c))
+            - j_ab * j_ac / ((1 + a) * (1 + c))
         )
     )
+
+    if p.get("harmonic", False):
+        v += x**2 + y**2
     return v
 
 
-def leps_potential_harmonic(x, y, xp=jnp):
-    """
-    Calculate the LEPS potential with a harmonic term at coordinates (x, y).
-    This is a modified version of the LEPS potential.
-
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
-
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    a = 0.05
-    b = 0.30
-    c = 0.05
-    dab = 4.746
-    dbc = 4.746
-    dac = 3.445
-    r0 = 0.742
-    alpha = 1.942
-
-    rab = x
-    rbc = y
-    rac = x + y
-
-    qab = (
-        0.5
-        * dab
-        * (1.5 * xp.exp(-2 * alpha * (rab - r0)) - xp.exp(-alpha * (rab - r0)))
-    )
-    qbc = (
-        0.5
-        * dbc
-        * (1.5 * xp.exp(-2 * alpha * (rbc - r0)) - xp.exp(-alpha * (rbc - r0)))
-    )
-    qac = (
-        0.5
-        * dac
-        * (1.5 * xp.exp(-2 * alpha * (rac - r0)) - xp.exp(-alpha * (rac - r0)))
-    )
-    jab = (
-        0.25 * dab * (xp.exp(-2 * alpha * (rab - r0)) - 6 * xp.exp(-alpha * (rab - r0)))
-    )
-    jbc = (
-        0.25 * dbc * (xp.exp(-2 * alpha * (rbc - r0)) - 6 * xp.exp(-alpha * (rbc - r0)))
-    )
-    jac = (
-        0.25 * dac * (xp.exp(-2 * alpha * (rac - r0)) - 6 * xp.exp(-alpha * (rac - r0)))
-    )
-
-    v = (
-        qab / (1 + a)
-        + qbc / (1 + b)
-        + qac / (1 + c)
-        - xp.sqrt(
-            jab**2 / (1 + a) ** 2
-            + jbc**2 / (1 + b) ** 2
-            + jac**2 / (1 + c) ** 2
-            - jab * jbc / (1 + a) / (1 + b)
-            - jbc * jac / (1 + b) / (1 + c)
-            - jab * jac / (1 + a) / (1 + c)
-        )
-        + x**2
-        + y**2
-    )
-    return v
-
-
-def wolfe_quapp_potential(x, y, xp=jnp):
-    """
-    Calculate the Wolfe-Quapp potential at coordinates (x, y).
-
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
-
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    a = 1
-    b = 1
+def _wolfe_quapp(x, y, params: dict, xp) -> Any:
+    """Wolfe-Quapp quartic potential with optional local softening."""
+    p = params
+    a, b = p["a"], p["b"]
     v = (
         a * (x**4 + y**4)
         - b * (2 * x**2 + 4 * y**2 - x * y)
@@ -254,34 +209,44 @@ def wolfe_quapp_potential(x, y, xp=jnp):
         + 0.3 * x
         + 0.1 * y
     )
+    if p.get("local_soft", False):
+        v += p["A_local"] * xp.exp(-((x - p["x0_local"]) ** 2) / (2 * p["sigma_local"] ** 2))
     return v
 
 
-def wolfe_quapp_potential_local_soft(x, y, xp=jnp):
+# ---------------------------------------------------------------------------
+# Numeric gradient / Hessian factory (NumPy backend only)
+# ---------------------------------------------------------------------------
+
+
+def _make_numeric_gradient(impl_fn):
+    """Return (grad_fn, hess_fn) using central finite differences.
+
+    Each returned function has the signature ``fn(x, y, params, xp)``
+    so callers can pass them through identically whether using autodiff or
+    finite differences.
     """
-    Calculate the Wolfe-Quapp potential with a local softening term at coordinates (x, y).
-    This is a modified version of the Wolfe-Quapp potential.
+    eps = 1e-5
 
-    Parameters:
-    x (float or np.ndarray): x-coordinate(s)
-    y (float or np.ndarray): y-coordinate(s)
+    def grad_fn(x, y, params, xp):
+        dfdx = (impl_fn(x + eps, y, params, xp) - impl_fn(x - eps, y, params, xp)) / (2 * eps)
+        dfdy = (impl_fn(x, y + eps, params, xp) - impl_fn(x, y - eps, params, xp)) / (2 * eps)
+        return xp.array([dfdx, dfdy])
 
-    Returns:
-    v (float or np.ndarray): The potential energy at the given coordinates.
-    """
-    a = 1
-    b = 1
-    A = 5
+    def hess_fn(x, y, params, xp):
+        f = impl_fn
+        f_xx = (f(x + eps, y, params, xp) + f(x - eps, y, params, xp) - 2 * f(x, y, params, xp)) / (eps**2)
+        f_yy = (f(x, y + eps, params, xp) + f(x, y - eps, params, xp) - 2 * f(x, y, params, xp)) / (eps**2)
+        f_xy = (
+            f(x + eps, y + eps, params, xp)
+            - f(x + eps, y - eps, params, xp)
+            - f(x - eps, y + eps, params, xp)
+            + f(x - eps, y - eps, params, xp)
+        ) / (4 * eps**2)
+        return xp.array([[f_xx, f_xy], [f_xy, f_yy]])
 
-    v = (
-        a * (x**4 + y**4)
-        - b * (2 * x**2 + 4 * y**2 - x * y)
-        + x * y
-        + 0.3 * x
-        + 0.1 * y
-    )
-    v += A * xp.exp(-(x + 1.17) / (0.2 * 2))
-    return v
+    return grad_fn, hess_fn
+
 
 class AnalyticPES_base(ABC):
     def __init__(self, pes_name: str):
@@ -459,4 +424,3 @@ class AnalyticPES:
             label="Potential Energy",
         )
         return ax
-
