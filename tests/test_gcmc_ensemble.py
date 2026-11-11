@@ -82,8 +82,12 @@ class TestGCEnsemble:
         assert accepted
 
     def test_summary(self, ensemble, rng):
-        ensemble.accept(-10, -15, {"move": "insert", "chemical_potential": -5.0}, 0.0, rng)
-        ensemble.accept(-15, -10, {"move": "delete", "chemical_potential": -5.0}, 0.0, rng)
+        ensemble.accept(
+            -10, -15, {"move": "insert", "chemical_potential": -5.0}, 0.0, rng
+        )
+        ensemble.accept(
+            -15, -10, {"move": "delete", "chemical_potential": -5.0}, 0.0, rng
+        )
 
         summary = ensemble.get_summary()
         assert summary["total_accepted"] + summary["total_rejected"] == 2
@@ -91,7 +95,9 @@ class TestGCEnsemble:
         assert "delete" in summary["move_stats"]
 
     def test_reset_stats(self, ensemble, rng):
-        ensemble.accept(-10, -15, {"move": "insert", "chemical_potential": -5.0}, 0.0, rng)
+        ensemble.accept(
+            -10, -15, {"move": "insert", "chemical_potential": -5.0}, 0.0, rng
+        )
         ensemble.reset_stats()
         assert ensemble.n_accepted == 0
         assert ensemble.acceptance_rate == 0.0

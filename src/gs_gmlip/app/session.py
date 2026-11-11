@@ -883,6 +883,11 @@ class Session:
     # search, whose result is its best-ranked structure.
     _TRAJECTORY_KINDS = frozenset({"singlepoint", "relax", "cell_relax", "nvt", "npt"})
 
+    @staticmethod
+    def _metric(rec: StructureRecord) -> float:
+        """Ranking value of a record: its score if it has one, otherwise its energy."""
+        return rec.score if rec.score is not None else rec.energy
+
     def graph(self) -> dict[str, Any]:
         """Provenance graph of the project: structures and jobs as nodes.
 
@@ -922,12 +927,7 @@ class Session:
                     rec for rec in produced if (rec.score, rec.energy) != (None, None)
                 ]
                 if scored:
-                    best = min(
-                        scored,
-                        key=lambda rec: rec.score
-                        if rec.score is not None
-                        else rec.energy,
-                    )
+                    best = min(scored, key=self._metric)
                     shown.add(best.id)
 
         nodes: list[dict[str, Any]] = []

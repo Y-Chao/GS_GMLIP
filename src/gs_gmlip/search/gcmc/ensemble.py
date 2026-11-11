@@ -103,7 +103,9 @@ class GCEnsemble:
 
         log_p_accept = -self.beta * dE + self.beta * mu_contrib + log_proposal_ratio
 
-        accepted = bool(log_p_accept >= 0 or rng.random() < np.exp(min(log_p_accept, 0)))
+        accepted = bool(
+            log_p_accept >= 0 or rng.random() < np.exp(min(log_p_accept, 0))
+        )
 
         # Update stats
         self._update_stats(move_type, accepted)

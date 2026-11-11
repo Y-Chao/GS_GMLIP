@@ -5,7 +5,6 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Optional
 
-import numpy as np
 from ase import Atoms
 from ase.constraints import FixAtoms
 from ase.io import read as ase_read
@@ -296,8 +295,7 @@ class Interface:
     def find_all_ads_sites(self):
         """Find all symmetry-distinct adsorption sites (Phase 2, not yet implemented)."""
         raise NotImplementedError(
-            "find_all_ads_sites is planned for Phase 2 "
-            "(pymatgen AdsorbateSiteFinder)."
+            "find_all_ads_sites is planned for Phase 2 (pymatgen AdsorbateSiteFinder)."
         )
 
     def find_simple_ads_sites(self, height_threshold: float = 2.0):

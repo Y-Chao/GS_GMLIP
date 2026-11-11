@@ -93,9 +93,7 @@ class BaseSearcher(ABC):
     def get_best(self, n: int = 1) -> list[Interface]:
         """Return the *n* lowest-energy structures found."""
         with_energy = [
-            iface
-            for iface in self._results
-            if iface.interface.calc is not None
+            iface for iface in self._results if iface.interface.calc is not None
         ]
         sorted_results = sorted(
             with_energy,

@@ -117,11 +117,11 @@ class GCMCRunner(BaseSearcher):
         w = {**defaults, **move_weights}
 
         # Determine allowed elements for swap (single-atom symbols from blocks)
-        allowed_elements = list(dict.fromkeys(  # preserve order, deduplicate
-            b.get_chemical_symbols()[0]
-            for b in self.blocks
-            if len(b) == 1
-        ))
+        allowed_elements = list(
+            dict.fromkeys(  # preserve order, deduplicate
+                b.get_chemical_symbols()[0] for b in self.blocks if len(b) == 1
+            )
+        )
 
         move_map: dict[str, MCMove] = {
             "insert": InsertMove(

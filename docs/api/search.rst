@@ -1,205 +1,60 @@
-Search Module
-=============
+Search methods
+==============
 
-.. module:: gs_gmlip.search
+Global structure search. Implemented: genetic algorithm and grand-canonical Monte Carlo. New methods subclass ``BaseSearcher`` and are registered with ``gs_gmlip.jobs.register_searcher``.
 
-The search module implements five global structure search methods, all
-inheriting from a common ``BaseSearcher`` interface.
+Searcher base class
+-------------------
 
-Base Searcher
--------------
-
-.. autoclass:: gs_gmlip.search.base.BaseSearcher
-   :members:
-
-Genetic Algorithm (GA)
-----------------------
-
-.. autoclass:: gs_gmlip.search.ga.runner.GARunner
+.. automodule:: gs_gmlip.search.base
    :members:
    :show-inheritance:
 
-Start Generator
-^^^^^^^^^^^^^^^
+Placement regions
+-----------------
 
-.. autoclass:: gs_gmlip.search.ga.startgenerator.StartGenerator
-   :members:
-
-Population
-^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.ga.population.Population
-   :members:
-
-Operators
-^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.ga.operators.OffspringCreator
-   :members:
-
-.. autoclass:: gs_gmlip.search.ga.operators.CutAndSplicePairing
+.. automodule:: gs_gmlip.search.region
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.ga.operators.RattleMutation
+Genetic algorithm: runner
+-------------------------
+
+.. automodule:: gs_gmlip.search.ga.runner
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.ga.operators.PermutationMutation
+Genetic algorithm: operators
+----------------------------
+
+.. automodule:: gs_gmlip.search.ga.operators
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.ga.operators.MirrorMutation
+Genetic algorithm: population
+-----------------------------
+
+.. automodule:: gs_gmlip.search.ga.population
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.ga.operators.OperationSelector
-   :members:
-
-Slab Operators
-^^^^^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.ga.slab_operators.CutSpliceSlabCrossover
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ga.slab_operators.RandomCompositionMutation
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ga.slab_operators.RandomElementMutation
-   :members:
-   :show-inheritance:
-
-Comparators
-^^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.ga.comparators.BaseComparator
-   :members:
-
-.. autoclass:: gs_gmlip.search.ga.comparators.InteratomicDistanceComparator
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ga.comparators.EnergyComparator
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ga.comparators.CompositionComparator
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ga.comparators.SequentialComparator
-   :members:
-   :show-inheritance:
-
-Grand Canonical Monte Carlo (GCMC)
+Grand-canonical Monte Carlo: runner
 -----------------------------------
 
-.. autoclass:: gs_gmlip.search.gcmc.runner.GCMCRunner
+.. automodule:: gs_gmlip.search.gcmc.runner
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.gcmc.ensemble.GCEnsemble
-   :members:
+Grand-canonical Monte Carlo: ensemble
+-------------------------------------
 
-Moves
-^^^^^
-
-.. autoclass:: gs_gmlip.search.gcmc.moves.MCMove
-   :members:
-
-.. autoclass:: gs_gmlip.search.gcmc.moves.InsertMove
+.. automodule:: gs_gmlip.search.gcmc.ensemble
    :members:
    :show-inheritance:
 
-.. autoclass:: gs_gmlip.search.gcmc.moves.DeleteMove
+Grand-canonical Monte Carlo: moves
+----------------------------------
+
+.. automodule:: gs_gmlip.search.gcmc.moves
    :members:
    :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.gcmc.moves.SwapMove
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.gcmc.moves.DisplaceMove
-   :members:
-   :show-inheritance:
-
-GOFEE
------
-
-.. autoclass:: gs_gmlip.search.gofee.runner.GOFEERunner
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.gofee.surrogate.SurrogateModel
-   :members:
-
-Acquisition Functions
-^^^^^^^^^^^^^^^^^^^^^
-
-.. autofunction:: gs_gmlip.search.gofee.acquisition.lower_confidence_bound
-
-.. autofunction:: gs_gmlip.search.gofee.acquisition.expected_improvement
-
-.. autofunction:: gs_gmlip.search.gofee.acquisition.probability_of_improvement
-
-.. autofunction:: gs_gmlip.search.gofee.surrogate.get_fingerprint
-
-Stochastic Surface Walking (SSW)
----------------------------------
-
-.. autoclass:: gs_gmlip.search.ssw.runner.SSWRunner
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.ssw.walker.SSWWalker
-   :members:
-
-.. autoclass:: gs_gmlip.search.ssw.minima_hopping.MinimaHopping
-   :members:
-
-Metadynamics
-------------
-
-.. autoclass:: gs_gmlip.search.metadynamics.runner.MetadynamicsRunner
-   :members:
-   :show-inheritance:
-
-Collective Variables
-^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.CollectiveVariable
-   :members:
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.Distance
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.Angle
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.Torsion
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.CoordinationNumber
-   :members:
-   :show-inheritance:
-
-.. autoclass:: gs_gmlip.search.metadynamics.collective_vars.Position
-   :members:
-   :show-inheritance:
-
-.. autofunction:: gs_gmlip.search.metadynamics.collective_vars.build_cvs_from_config
-
-PLUMED Interface
-^^^^^^^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.search.metadynamics.plumed_interface.PlumedCalculator
-   :members:
-
-.. autofunction:: gs_gmlip.search.metadynamics.plumed_interface.generate_plumed_input
-
-.. autofunction:: gs_gmlip.search.metadynamics.plumed_interface.extract_minima_from_fes

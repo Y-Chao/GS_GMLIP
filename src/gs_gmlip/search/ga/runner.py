@@ -133,7 +133,9 @@ class GARunner(BaseSearcher):
             ]
             self.operator_weights = [4.0, 3.0, 2.0, 1.0, 1.5]
 
-        self.op_selector = OperationSelector(self.operator_weights, self.operators, rng=self.rng)
+        self.op_selector = OperationSelector(
+            self.operator_weights, self.operators, rng=self.rng
+        )
 
         # --- State ---
         self.population: Population | None = None
@@ -160,13 +162,17 @@ class GARunner(BaseSearcher):
                 logger.warning("Failed to generate candidate %d", i)
                 continue
             try:
-                iface = self.evaluator.evaluate(iface, relax=True, fmax=self.fmax, steps=self.relax_steps)
+                iface = self.evaluator.evaluate(
+                    iface, relax=True, fmax=self.fmax, steps=self.relax_steps
+                )
                 energy = iface.interface.get_potential_energy()
                 self.population.add(iface)
                 self._results.append(iface)
                 logger.info("  init %d: E = %.4f eV", i + 1, energy)
             except Exception:
-                logger.warning("Evaluation failed for initial candidate %d", i, exc_info=True)
+                logger.warning(
+                    "Evaluation failed for initial candidate %d", i, exc_info=True
+                )
 
         self._is_setup = True
         logger.info("GA setup complete. Population size = %d", self.population.size)
@@ -247,9 +253,7 @@ class GARunner(BaseSearcher):
         # Cosine similarity of sorted pair-product vectors
         if len(fp_a) == 0:
             return True  # both empty
-        sim = np.dot(fp_a, fp_b) / (
-            np.linalg.norm(fp_a) * np.linalg.norm(fp_b) + 1e-12
-        )
+        sim = np.dot(fp_a, fp_b) / (np.linalg.norm(fp_a) * np.linalg.norm(fp_b) + 1e-12)
         return bool(sim > 0.999)
 
     def get_population(self) -> list[Interface]:

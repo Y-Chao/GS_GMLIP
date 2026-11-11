@@ -43,6 +43,7 @@ class TestBaseEvaluator:
         result = evaluator.evaluate(interface, relax=False)
         new_positions = result.interface.get_positions()
         # Positions should be unchanged (no relaxation)
+        assert (new_positions == orig_positions).all()
         assert result.interface.calc is not None
         # Energy should be computable
         energy = result.interface.get_potential_energy()

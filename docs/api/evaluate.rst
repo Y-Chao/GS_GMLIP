@@ -1,40 +1,32 @@
-Evaluate Module
-===============
+Evaluators and calculators
+==========================
 
-.. module:: gs_gmlip.evaluate
+Energy and force back ends: the evaluator base class, the calculator registry, VASP input sets, and analytic test surfaces.
 
-The evaluate module provides energy and force evaluators for candidate
-structures, with support for MLIP (MACE) and DFT (VASP) backends.
+Evaluator base class
+--------------------
 
-Base Evaluator
---------------
-
-.. autoclass:: gs_gmlip.evaluate.base.BaseEvaluator
-   :members:
-
-MLIP Evaluators
----------------
-
-ASECalculatorEvaluator
-^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: gs_gmlip.evaluate.mlip.ase_calc.ASECalculatorEvaluator
+.. automodule:: gs_gmlip.evaluator.base
    :members:
    :show-inheritance:
 
-MACEEvaluator
-^^^^^^^^^^^^^
+Calculator registry
+-------------------
 
-.. autoclass:: gs_gmlip.evaluate.mlip.mace_eval.MACEEvaluator
+.. automodule:: gs_gmlip.evaluator.calculators
    :members:
    :show-inheritance:
 
-DFT Evaluators
---------------
+VASP inputs
+-----------
 
-VASPEvaluator
-^^^^^^^^^^^^^
+.. automodule:: gs_gmlip.evaluator.vasp
+   :members:
+   :show-inheritance:
 
-.. autoclass:: gs_gmlip.evaluate.dft.vasp.VASPEvaluator
+Analytic potential energy surfaces
+----------------------------------
+
+.. automodule:: gs_gmlip.evaluator.analytic_pes
    :members:
    :show-inheritance:

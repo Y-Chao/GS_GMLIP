@@ -88,9 +88,19 @@ def test_symmetry_distinct_sites_are_fewer(cu111):
 @pytest.mark.parametrize("name", ops.ADSORBATES)
 def test_adsorbate_binds_through_lowest_atom_at_origin(name):
     mol = ops.get_adsorbate(name)
-    assert np.allclose(mol.cart_coords.min(axis=0)[2], 0.0, atol=0.5)
+    distances = np.linalg.norm(mol.cart_coords, axis=1)
+    bind = int(np.argmin(distances))
     # The binding atom sits at the origin.
-    assert np.isclose(np.linalg.norm(mol.cart_coords, axis=1).min(), 0.0, atol=1e-8)
+    assert np.isclose(distances[bind], 0.0, atol=1e-8)
+    if len(mol) > 1:
+        # The rest of the molecule points away from the surface: its centroid is
+        # straight above the binding atom, or coincides with it for molecules
+        # that are laid flat (e.g. CO2, CH4).
+        centroid = np.delete(mol.cart_coords, bind, axis=0).mean(axis=0)
+        assert centroid[2] > -1e-6
+        assert (
+            np.allclose(centroid[:2], 0.0, atol=1e-6) or np.linalg.norm(centroid) < 1e-3
+        )
 
 
 def test_co_binds_through_carbon():

@@ -85,6 +85,7 @@ def test_cached_properties_present_and_cached():
     assert intf.bondmatrix is bm1  # cached: identical object on 2nd access
     assert isinstance(intf.possible_bond, dict)
     import numpy as np
+
     assert isinstance(intf.fingerprint, np.ndarray)
 
 
@@ -222,9 +223,7 @@ def test_align_preserves_adsorbate_internal_spacing():
     slab = _slab()
     full = slab + Atoms("CO", positions=[[2.0, 2.0, 8.0], [2.0, 2.0, 9.13]])
     intf = Interface(substrate=slab, interface=full)
-    before_gap = (
-        full.get_positions()[9, 2] - full.get_positions()[8, 2]
-    )
+    before_gap = full.get_positions()[9, 2] - full.get_positions()[8, 2]
     intf.align_interface(loc="bottom")
     pos = intf.interface.get_positions()
     after_gap = pos[9, 2] - pos[8, 2]

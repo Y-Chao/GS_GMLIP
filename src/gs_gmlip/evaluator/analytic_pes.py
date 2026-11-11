@@ -1,7 +1,7 @@
 """Analytic 2D potential energy surfaces for benchmarking global-search algorithms."""
+
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,8 +154,10 @@ def _muller_brown(x, y, params: dict, xp) -> Any:
     for i in range(4):
         dx = x - p["x0"][i]
         dy = y - p["y0"][i]
-        v += pfac * p["A"][i] * xp.exp(
-            p["a"][i] * dx**2 + p["b"][i] * dx * dy + p["c"][i] * dy**2
+        v += (
+            pfac
+            * p["A"][i]
+            * xp.exp(p["a"][i] * dx**2 + p["b"][i] * dx * dy + p["c"][i] * dy**2)
         )
     return v
 
@@ -171,10 +173,14 @@ def _leps(x, y, params: dict, xp) -> Any:
     rab, rbc, rac = x, y, x + y
 
     def _q(d, r):
-        return 0.5 * d * (1.5 * xp.exp(-2 * alpha * (r - r0)) - xp.exp(-alpha * (r - r0)))
+        return (
+            0.5 * d * (1.5 * xp.exp(-2 * alpha * (r - r0)) - xp.exp(-alpha * (r - r0)))
+        )
 
     def _j(d, r):
-        return 0.25 * d * (xp.exp(-2 * alpha * (r - r0)) - 6 * xp.exp(-alpha * (r - r0)))
+        return (
+            0.25 * d * (xp.exp(-2 * alpha * (r - r0)) - 6 * xp.exp(-alpha * (r - r0)))
+        )
 
     q_ab, q_bc, q_ac = _q(d_ab, rab), _q(d_bc, rbc), _q(d_ac, rac)
     j_ab, j_bc, j_ac = _j(d_ab, rab), _j(d_bc, rbc), _j(d_ac, rac)
@@ -229,14 +235,26 @@ def _make_numeric_gradient(impl_fn):
     eps = 1e-5
 
     def grad_fn(x, y, params, xp):
-        dfdx = (impl_fn(x + eps, y, params, xp) - impl_fn(x - eps, y, params, xp)) / (2 * eps)
-        dfdy = (impl_fn(x, y + eps, params, xp) - impl_fn(x, y - eps, params, xp)) / (2 * eps)
+        dfdx = (impl_fn(x + eps, y, params, xp) - impl_fn(x - eps, y, params, xp)) / (
+            2 * eps
+        )
+        dfdy = (impl_fn(x, y + eps, params, xp) - impl_fn(x, y - eps, params, xp)) / (
+            2 * eps
+        )
         return xp.array([dfdx, dfdy])
 
     def hess_fn(x, y, params, xp):
         f = impl_fn
-        f_xx = (f(x + eps, y, params, xp) + f(x - eps, y, params, xp) - 2 * f(x, y, params, xp)) / (eps**2)
-        f_yy = (f(x, y + eps, params, xp) + f(x, y - eps, params, xp) - 2 * f(x, y, params, xp)) / (eps**2)
+        f_xx = (
+            f(x + eps, y, params, xp)
+            + f(x - eps, y, params, xp)
+            - 2 * f(x, y, params, xp)
+        ) / (eps**2)
+        f_yy = (
+            f(x, y + eps, params, xp)
+            + f(x, y - eps, params, xp)
+            - 2 * f(x, y, params, xp)
+        ) / (eps**2)
         f_xy = (
             f(x + eps, y + eps, params, xp)
             - f(x + eps, y - eps, params, xp)
@@ -248,20 +266,24 @@ def _make_numeric_gradient(impl_fn):
     return grad_fn, hess_fn
 
 
-class AnalyticPES_base(ABC):
-    def __init__(self, pes_name: str):
-        self.pes_name = pes_name
+_FAMILIES = {
+    "muller_brown": _muller_brown,
+    "leps": _leps,
+    "wolfe_quapp": _wolfe_quapp,
+}
 
-    def __call__(self, x: np.ndarray|list):
-        return x, self.get_pes_energy(x), self.get_forces(x)
-
-    def get_energy(self, x: np.ndarray|list):
-        raise NotImplementedError
-
-    def get_forces(self, x:np.ndarray|list):
-        raise NotImplementedError
 
 class AnalyticPES:
+    """A named analytic 2D potential energy surface with energies, forces, and Hessians.
+
+    Args:
+        function_name: Key of ``REGISTRY``.
+        use_jax: Differentiate with JAX instead of central finite differences.
+
+    Raises:
+        ValueError: If ``function_name`` is not registered.
+    """
+
     def __init__(self, function_name, use_jax=False):
         self.function_name = function_name
         self.use_jax = use_jax
@@ -269,40 +291,32 @@ class AnalyticPES:
         self._initialize_function()
 
     def _initialize_function(self):
-        if self.function_name == "muller_brown":
-            self.func = muller_brown_potential
-            self.range = [[-1.75, 1.25], [-0.5, 2.5]]
-            self.z_max = 24
-        elif self.function_name == "muller_brown_three_stats":
-            self.func = muller_brown_potential_three_stats
-            self.range = [[-1.75, 1.25], [-0.5, 2.5]]
-            self.z_max = 24
-        elif self.function_name == "leps":
-            self.func = leps_potential
-            self.range = [[0, 4], [0, 4]]
-            self.z_max = 2
-        elif self.function_name == "leps_harmonic":
-            self.func = leps_potential_harmonic
-            self.range = [[0, 4], [0, 4]]
-            self.z_max = 2
-        elif self.function_name == "wolfe_quapp":
-            self.func = wolfe_quapp_potential
-            self.range = [[-2, 2], [-2, 2]]
-            self.z_max = 2
-        elif self.function_name == "wolfe_quapp_local_soft":
-            self.func = wolfe_quapp_potential_local_soft
-            self.range = [[-2, 2], [-2, 2]]
-            self.z_max = 2
-        else:
+        if self.function_name not in REGISTRY:
             raise ValueError(f"Function '{self.function_name}' is not recognized.")
+        config = REGISTRY[self.function_name]
+        implementation = _FAMILIES[config.family]
+        params = config.params
+        self.config = config
+        self.range = [list(config.x_range), list(config.y_range)]
+        self.z_max = config.z_max
+
+        def func(x, y, xp):
+            return implementation(x, y, params, xp)
+
+        self.func = func
 
         if self.use_jax:
             import jax
             import jax.numpy as jnp
 
             self.xp = jnp
-            self.grad_func = jax.jit(jax.grad(self.func, argnums=(0, 1)))
-            self.hess_func = jax.jit(jax.hessian(self.func, argnums=(0, 1)))
+
+            def energy(x, y):
+                return implementation(x, y, params, jnp)
+
+            self.grad_func = jax.jit(jax.grad(energy, argnums=(0, 1)))
+            hessian = jax.jit(jax.hessian(energy, argnums=(0, 1)))
+            self.hess_func = lambda x, y: jnp.array(hessian(x, y))
         else:
             self.xp = np
             self.grad_func = self.numberic_gradient()[0]
@@ -404,7 +418,6 @@ class AnalyticPES:
     def plot_pes(
         self, x_range=None, y_range=None, z_max=None, num_points=100, levels=50, ax=None
     ):
-
         X, Y, Z = self.pes_matrix(x_range, y_range, num_points)
 
         if z_max is None:
@@ -414,12 +427,12 @@ class AnalyticPES:
         if ax is None:
             fig, ax = plt.subplots()
 
-        ax.contourf(X, Y, Z_mask, levels=levels, cmap=utils.cm_fessa)
+        ax.contourf(X, Y, Z_mask, levels=levels, cmap="viridis")
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_title(f"PES: {self.function_name}")
         plt.colorbar(
-            ax.contourf(X, Y, Z_mask, levels=levels, cmap=utils.cm_fessa),
+            ax.contourf(X, Y, Z_mask, levels=levels, cmap="viridis"),
             ax=ax,
             label="Potential Energy",
         )

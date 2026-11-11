@@ -86,4 +86,6 @@ class BaseEvaluator(ABC):
         try:
             dyn.run(fmax=fmax, steps=steps)
         except Exception:
-            logger.warning("BFGS did not converge within %d steps (fmax=%.4f)", steps, fmax)
+            logger.warning(
+                "BFGS did not converge within %d steps (fmax=%.4f)", steps, fmax
+            )

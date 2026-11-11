@@ -96,9 +96,7 @@ class TestDisplaceMove:
         assert log_ratio == 0.0  # symmetric
         # Appended atom should have moved
         n_sub = len(cu100_slab)
-        assert not np.allclose(
-            orig_pos[n_sub:], new_iface.interface.positions[n_sub:]
-        )
+        assert not np.allclose(orig_pos[n_sub:], new_iface.interface.positions[n_sub:])
 
     def test_displace_empty_returns_none(self, cu100_slab, rng):
         iface = Interface(substrate=cu100_slab)

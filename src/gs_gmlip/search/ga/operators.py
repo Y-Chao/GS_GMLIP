@@ -86,7 +86,9 @@ class OffspringCreator(ABC):
         Returns None if the operation could not produce a valid offspring.
         """
 
-    def _copy_parent_metadata(self, parent: Interface, offspring: Interface) -> Interface:
+    def _copy_parent_metadata(
+        self, parent: Interface, offspring: Interface
+    ) -> Interface:
         """Copy relevant metadata from parent to offspring."""
         return offspring
 
@@ -171,8 +173,6 @@ class CutAndSpliceCrossover(OffspringCreator):
     def _cross(
         self, p1: Interface, p2: Interface, maxiter: int = 1000
     ) -> Interface | None:
-        n1_sub = len(p1.substrate)
-        n2_sub = len(p2.substrate)
         idx1 = _appended_indices(p1)
         idx2 = _appended_indices(p2)
 
@@ -192,11 +192,13 @@ class CutAndSpliceCrossover(OffspringCreator):
             # Random cutting plane normal
             theta = self.rng.uniform(0, 2 * np.pi)
             phi = np.arccos(2 * self.rng.random() - 1)
-            normal = np.array([
-                np.sin(phi) * np.cos(theta),
-                np.sin(phi) * np.sin(theta),
-                np.cos(phi),
-            ])
+            normal = np.array(
+                [
+                    np.sin(phi) * np.cos(theta),
+                    np.sin(phi) * np.sin(theta),
+                    np.cos(phi),
+                ]
+            )
 
             # Cut point midway between the two centers, plus small random offset
             cut_point = (com1 + com2) / 2.0 + self.rng.normal(0, 0.5, 3)
@@ -428,7 +430,9 @@ class TwistMutation(OffspringCreator):
                 cos_a, sin_a = np.cos(rad), np.sin(rad)
                 new_x = cos_a * pos[0] - sin_a * pos[1]
                 new_y = sin_a * pos[0] + cos_a * pos[1]
-                offspring.interface.positions[i] = com + np.array([new_x, new_y, pos[2]])
+                offspring.interface.positions[i] = com + np.array(
+                    [new_x, new_y, pos[2]]
+                )
 
             offspring._reset_cache()
             if not self.blmin or _check_min_distances(offspring, self.blmin):

@@ -65,7 +65,12 @@ class TestGCMCRunner:
         runner.setup()
         runner.run(n_steps=5)
         summary = runner.get_summary()
-        assert summary["total_accepted"] + summary["total_rejected"] + summary["total_invalid"] >= 0
+        assert (
+            summary["total_accepted"]
+            + summary["total_rejected"]
+            + summary["total_invalid"]
+            >= 0
+        )
         assert summary["temperature"] == 300.0
 
     def test_best_tracks_minimum(self, runner):
@@ -79,18 +84,22 @@ class TestGCMCRunner:
     def test_reproducibility(self, evaluator, substrate):
         """Same seed → same results."""
         r1 = GCMCRunner(
-            evaluator=evaluator, substrate=substrate,
+            evaluator=evaluator,
+            substrate=substrate,
             blocks=[Atoms("O", positions=[[0, 0, 0]])],
             block_names=["O"],
             chemical_potentials={"O": -5.0},
-            temperature=300.0, seed=42,
+            temperature=300.0,
+            seed=42,
         )
         r2 = GCMCRunner(
-            evaluator=evaluator, substrate=substrate,
+            evaluator=evaluator,
+            substrate=substrate,
             blocks=[Atoms("O", positions=[[0, 0, 0]])],
             block_names=["O"],
             chemical_potentials={"O": -5.0},
-            temperature=300.0, seed=42,
+            temperature=300.0,
+            seed=42,
         )
         r1.setup()
         r2.setup()
