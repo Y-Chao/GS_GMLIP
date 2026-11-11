@@ -7,6 +7,8 @@ from gs_gmlip.evaluator.calculators import (
     CalculatorEvaluator,
     calculator_entries,
     get_calculator,
+    level_of_theory,
+    matgl_models,
     register_calculator,
 )
 
@@ -15,5 +17,7 @@ __all__ = [
     "CalculatorEvaluator",
     "calculator_entries",
     "get_calculator",
+    "level_of_theory",
+    "matgl_models",
     "register_calculator",
 ]

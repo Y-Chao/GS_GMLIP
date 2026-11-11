@@ -27,15 +27,23 @@ dev = [
     "black>=24.0.0",
     "isort>=5.13.0",
     "pytest>=8.0.0",
+    "httpx>=0.27",
     "ruff>=0.3.0",
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=2.0.0",
     "sphinx-autodoc-typehints>=2.0.0",
     "nbsphinx>=0.9.0",
 ]
-all = ["gs-gmlip[mlip,plumed,dev,app]"]
+all = ["gs-gmlip[mlip,plumed,dev,app,solvent,matgl]"]
 app = [
-    "nicegui>=2.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+solvent = [
+    "packmol>=21.2.3",
+]
+matgl = [
+    "matgl>=4.1.4",
 ]
 
 [project.scripts]
@@ -48,6 +56,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["gs_gmlip*"]
+
+[tool.setuptools.package-data]
+gs_gmlip = ["app/static/*"]
 
 [tool.black]
 line-length = 88

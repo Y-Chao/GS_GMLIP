@@ -34,7 +34,7 @@ uv run pytest tests/test_gcmc.py::test_insert_move -v
 uv run ruff format check gs_gmlip/ tests/
 uv run ruff check gs_gmlip/ tests/
 
-# Interactive app (needs the `app` extra: uv pip install -e ".[app]")
+# Interactive app (needs the `app` extra: uv pip install -e ".[app]"; optional: `solvent`, `matgl`)
 uv run gs_gmlip app --project my_project        # http://127.0.0.1:8080
 # Run one job directory headless (what every executor calls)
 uv run gs_gmlip run-job my_project/jobs/<job_id>
@@ -57,13 +57,23 @@ A searcher is constructed with an evaluator instance — they are independently 
 
 ### Interactive app, store, and jobs
 
-The app never calls a searcher directly. The flow is: builder edits an `Interface` -> the structure is written to the store -> a `JobSpec` is handed to an executor -> a worker process runs the task and writes every intermediate structure back to the store -> the app polls the store.
+Split of responsibilities: **JavaScript does interaction and rendering, Python does all chemistry.** The browser sends intents ("cleave this slab", "rotate these atoms", "run this task") and redraws from the JSON it gets back. The app never calls a searcher directly: an edit produces an `Interface`, the structure goes to the store, a `JobSpec` goes to an executor, a worker process runs the task and writes every intermediate structure back, and the frontend polls.
 
-- [`interface/operations.py`](src/gs_gmlip/interface/operations.py) -- all structure manipulation, done with pymatgen (`SlabGenerator`, `AdsorbateSiteFinder`, `SymmOp`). Functions are pure (return a new `Interface`); the app's undo relies on that. Slabs are oriented a along x, normal along z, c perpendicular.
-- [`store.py`](src/gs_gmlip/store.py) -- `StructureStore` (ase.db SQLite + provenance: `stage`, `method`, `calc_name`, `parent_id`, `job_id`, `step`) and `Project` (`<root>/structures.db`, `<root>/jobs/<job_id>/`). Energies and forces are frozen into rows.
-- [`evaluator/calculators.py`](src/gs_gmlip/evaluator/calculators.py) -- calculator registry (`register_calculator`, `get_calculator`; built in: `emt`, `matgl`, `mace`, `vasp`) and `CalculatorEvaluator`. Backends import lazily.
-- [`jobs/`](src/gs_gmlip/jobs) -- `JobSpec`/`JobStatus` (JSON files in the job directory), tasks registered with `@register_task` (`singlepoint`, `relax`, `md`, `ga`, `gcmc`), `worker.py` (`python -m gs_gmlip.jobs.worker <job_dir>`), and `LocalExecutor`. New execution back ends (HPC managers) subclass `BaseExecutor`; new methods (SSW, GOFEE, minima hopping, Sella) are added as tasks.
-- [`app/`](src/gs_gmlip/app) -- NiceGUI app. `scene.py` (plain Python, tested) turns an `Interface` into a JSON scene; `viewer.py` is the 3Dmol.js surface viewer (loaded from a CDN); `main.py` is the page.
+- [`interface/operations.py`](src/gs_gmlip/interface/operations.py) -- all structure manipulation, done with pymatgen (`SlabGenerator`, `AdsorbateSiteFinder`, `SymmOp`): bulk, slab, sites, adsorbates, delete/substitute/move/rotate/fix, and ASE constraints (`FixBondLengths`, `FixSubsetCom`, `Hookean` wall). Functions are pure (return a new `Interface`); undo relies on that. Slabs are oriented a along x, normal along z, c perpendicular.
+- [`interface/solvation.py`](src/gs_gmlip/interface/solvation.py) -- Packmol water/solvent filling (`solvent` extra).
+- [`store.py`](src/gs_gmlip/store.py) -- `StructureStore` (ase.db SQLite + provenance: `stage`, `method`, `calc_name`, `parent_id`, `job_id`, `step`, `score`) and `Project` (`<root>/structures.db`, `<root>/jobs/<job_id>/`, `<root>/plugins/*.py`).
+- [`evaluator/calculators.py`](src/gs_gmlip/evaluator/calculators.py) -- calculator registry (`register_calculator`; built in: `emt`, `matgl`, `mace`, `vasp`). Default MatGL model: `TensorNet-PES-MatPES-r2SCAN-2025.2`.
+- [`evaluator/vasp.py`](src/gs_gmlip/evaluator/vasp.py) -- VASP inputs from pymatgen input sets (`VASP_PRESETS`), with tags layered set < precision < surface < dispersion < user settings.
+- [`jobs/`](src/gs_gmlip/jobs) -- `JobSpec`/`JobStatus`, tasks (`singlepoint`, `relax`, `cell_relax`, `nvt`, `npt`, `ga`, `gcmc`, `vasp_inputs`), `worker.py`, `LocalExecutor`. New execution back ends subclass `BaseExecutor`.
+- [`plugins.py`](src/gs_gmlip/plugins.py) -- plugin loading (entry-point group `gs_gmlip.plugins`, or `<project>/plugins/*.py`). A new search algorithm is a `BaseSearcher` subclass registered with `register_searcher`; a new engine is `register_calculator`; anything else is `register_task`.
+- [`interface/intermediates.py`](src/gs_gmlip/interface/intermediates.py), [`interface/molecules.py`](src/gs_gmlip/interface/molecules.py) -- seed electrocatalysis intermediates (HER/OER/ORR/CO2RR/CORR; initial-guess geometries derived from ASE G2, not literature structures) and the tiered `MoleculeLibrary`: temporary < project (`<project>/molecules.json`) < global (`~/.gs_gmlip/molecules.json`) < seed < built-in, first hit wins.
+- [`energetics.py`](src/gs_gmlip/energetics.py), [`importers.py`](src/gs_gmlip/importers.py) -- every stored structure carries a `role` (bulk, molecule, surface, adsorbed, other) and a `level` of theory (`code/xc/basis`, or `calculator/model`); `tags` hold the rest. Derived energies (formation, surface, adsorption, grand potential) are only computed between structures of the same level, with references looked up by role in the project store, then the global store (`~/.gs_gmlip/structures.db`). `import_ase_db` / `gs_gmlip import` normalizes foreign ASE databases into that schema.
+- [`config.py`](src/gs_gmlip/config.py) -- user-level directory (`~/.gs_gmlip`, or `GS_GMLIP_HOME`): global molecule library and recent projects. Tests isolate it through an autouse fixture.
+- [`app/session.py`](src/gs_gmlip/app/session.py) -- the server-side session: several `Workspace`s ("windows": bulk, surface, molecule), each with its own structure, undo, and store link; plus edits, jobs, ranking, provenance graph. No web framework, fully testable. Every API route takes the window id as the `ws` query parameter. All browser tabs on one server share this session.
+- [`app/server.py`](src/gs_gmlip/app/server.py) -- thin FastAPI JSON API over `Session` (`create_app`, `run_app`).
+- [`app/static/`](src/gs_gmlip/app/static) -- the frontend as plain ES modules, no build step: `viewer.js` (3Dmol.js surface viewer, drag move/rotate), `graph.js` (chart, provenance graph), `app.js` (tool column, panels). 3Dmol.js loads from a CDN.
+
+Frontend changes need no build; reload the page. When adding an edit operation, add it to `operations.py`, to the `handlers` map in `Session.edit`, and to `TOOLS` in `app.js`.
 
 ### Surface/adsorbate identification scheme
 

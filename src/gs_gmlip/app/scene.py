@@ -1,9 +1,10 @@
-"""Turn an ``Interface`` into a JSON scene for the 3Dmol surface viewer.
+"""Turn an ``Interface`` into a JSON scene for the JavaScript viewer.
 
-This module is plain Python (no NiceGUI import), so the scene logic is unit
-testable. The scene encodes what a generic molecule viewer does not know
-about a surface system: in-plane periodic images, the cell, substrate versus
-adsorbate roles, frozen atoms, adsorbate bonds, and adsorption-site markers.
+Plain Python, no web framework. The scene carries what a generic molecule
+viewer does not know about a surface system: the cell, substrate versus
+adsorbate roles, frozen atoms, bonds that do not cross periodic boundaries,
+extra constraints, and adsorption-site markers. Periodic images, selection
+halos, and all styling are the browser's job.
 """
 
 from __future__ import annotations
@@ -11,23 +12,44 @@ from __future__ import annotations
 from typing import Any, Iterable, Sequence
 
 import numpy as np
-from ase.data import covalent_radii
+from ase.data import atomic_numbers, covalent_radii
 from ase.data.colors import jmol_colors
+from ase.neighborlist import neighbor_list
 
 from gs_gmlip.interface.core import Interface
-from gs_gmlip.interface.operations import AdsorptionSite
+from gs_gmlip.interface.operations import (
+    AdsorptionSite,
+    describe_constraints,
+    list_items,
+)
 
-SITE_COLORS = {"ontop": "#d62728", "bridge": "#1f77b4", "hollow": "#2ca02c"}
-# Fixed atoms are blended towards this colour so constraints are visible.
-_FIXED_TINT = np.array([0.35, 0.35, 0.35])
-_FIXED_BLEND = 0.55
-# Two adsorbate atoms are drawn bonded below this multiple of the summed covalent radii.
-_BOND_SCALE = 1.2
+SITE_COLORS = {"ontop": "#ff5a5a", "bridge": "#4aa8ff", "hollow": "#46d37a"}
+
+# Element colours: Jmol/CPK with the light carbon, hydrogen, and nitrogen of the
+# PyMOL-like "paton"/"pmol" presets of xyzrender, which read well on black.
+_COLOR_OVERRIDES = {"C": "#d9d9d9", "H": "#fafafa", "N": "#7f7fbf"}
+
+# Frozen atoms are blended towards this colour so constraints are visible.
+_FIXED_TINT = np.array([0.16, 0.17, 0.2])
+_FIXED_BLEND = 0.5
+# Two atoms are bonded below this multiple of the summed covalent radii.
+_BOND_SCALE = 1.12
 
 
 def _hex(rgb: np.ndarray) -> str:
     red, green, blue = (int(round(255 * float(np.clip(x, 0, 1)))) for x in rgb)
     return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def _rgb(color: str) -> np.ndarray:
+    return np.array([int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)])
+
+
+def element_color(symbol: str) -> str:
+    """Display colour of an element as ``#rrggbb``."""
+    if symbol in _COLOR_OVERRIDES:
+        return _COLOR_OVERRIDES[symbol]
+    return _hex(np.asarray(jmol_colors[atomic_numbers[symbol]], dtype=float))
 
 
 def atom_role(interface: Interface, index: int) -> str:
@@ -39,42 +61,55 @@ def atom_role(interface: Interface, index: int) -> str:
     return "adsorbate"
 
 
+def find_bonds(interface: Interface) -> list[list[int]]:
+    """Bonded atom pairs ``[i, j]`` with ``i < j``, never across a periodic boundary."""
+    atoms = interface.interface.copy()
+    atoms.set_pbc(False)
+    cutoffs = [_BOND_SCALE * covalent_radii[number] for number in atoms.numbers]
+    first, second = neighbor_list("ij", atoms, cutoffs)
+    return sorted([int(i), int(j)] for i, j in zip(first, second) if i < j)
+
+
 def build_scene(
     interface: Interface,
-    selection: Iterable[int] = (),
     sites: Sequence[AdsorptionSite] = (),
-    repeat: int = 0,
+    excluded: Iterable[str] = (),
 ) -> dict[str, Any]:
-    """Build the viewer scene for a surface system.
+    """Build the viewer scene for a structure.
 
     Args:
         interface: The structure to draw.
-        selection: Interface indices to highlight.
         sites: Adsorption sites to draw as clickable markers.
-        repeat: Number of ghost periodic images on each side along a and b
-            (0 draws the cell only). Images are never added along the normal.
+        excluded: Item keys (see ``operations.list_items``) the user switched
+            off: their atoms are flagged ``excluded`` (drawn faded) and their
+            constraints are left out.
 
     Returns:
-        A JSON-serializable dict with keys ``atoms``, ``ghosts``, ``bonds``,
-        ``cell``, ``sites``, and ``center``. Coordinates are in Å.
+        A JSON-serializable dict with keys ``atoms``, ``bonds``, ``cell``,
+        ``sites``, and ``constraints``. Coordinates are in Å.
     """
     atoms = interface.interface
-    n_substrate = len(interface.substrate)
     positions = atoms.get_positions()
-    numbers = atoms.get_atomic_numbers()
-    symbols = atoms.get_chemical_symbols()
-    cell = np.asarray(atoms.cell)
     fixed = set(interface.fix)
-    selected = {int(i) for i in selection}
+    off = set(excluded)
+    items = {item["key"]: item for item in list_items(interface)} if off else {}
+    faded = {
+        i
+        for key in off
+        if key.startswith(("ads:", "cluster:")) and key in items
+        for i in items[key]["atoms"]
+    }
+    if "fixed" in off:
+        fixed = set()
 
     atom_items = []
     for index, (symbol, number, position) in enumerate(
-        zip(symbols, numbers, positions)
+        zip(atoms.get_chemical_symbols(), atoms.numbers, positions)
     ):
-        color = np.asarray(jmol_colors[number], dtype=float)
+        color = element_color(symbol)
         is_fixed = index in fixed
         if is_fixed:
-            color = (1 - _FIXED_BLEND) * color + _FIXED_BLEND * _FIXED_TINT
+            color = _hex((1 - _FIXED_BLEND) * _rgb(color) + _FIXED_BLEND * _FIXED_TINT)
         atom_items.append(
             {
                 "index": index,
@@ -82,64 +117,58 @@ def build_scene(
                 "x": float(position[0]),
                 "y": float(position[1]),
                 "z": float(position[2]),
-                "color": _hex(color),
+                "color": color,
                 "radius": float(covalent_radii[number]),
                 "role": atom_role(interface, index),
                 "fixed": is_fixed,
-                "selected": index in selected,
+                "excluded": index in faded,
             }
         )
 
-    ghosts = []
-    if repeat > 0 and cell.any():
-        for shift_a in range(-repeat, repeat + 1):
-            for shift_b in range(-repeat, repeat + 1):
-                if shift_a == 0 and shift_b == 0:
-                    continue
-                offset = shift_a * cell[0] + shift_b * cell[1]
-                for item in atom_items:
-                    ghosts.append(
-                        {
-                            "elem": item["elem"],
-                            "x": item["x"] + float(offset[0]),
-                            "y": item["y"] + float(offset[1]),
-                            "z": item["z"] + float(offset[2]),
-                            "color": item["color"],
-                            "radius": item["radius"],
-                        }
-                    )
-
-    bonds = []
-    appended = range(n_substrate, len(atoms))
-    for i in appended:
-        for j in range(i + 1, len(atoms)):
-            cutoff = _BOND_SCALE * (
-                covalent_radii[numbers[i]] + covalent_radii[numbers[j]]
-            )
-            if atoms.get_distance(i, j, mic=False) <= cutoff:
-                bonds.append([i, j])
-
-    site_items = [
-        {
-            "index": index,
-            "kind": site.kind,
-            "x": site.coords[0],
-            "y": site.coords[1],
-            "z": site.coords[2],
-            "color": SITE_COLORS.get(site.kind, "#888888"),
-        }
-        for index, site in enumerate(sites)
-    ]
-
-    center = cell.sum(axis=0) / 2.0 if cell.any() else positions.mean(axis=0)
-    if len(positions):
-        center[2] = float((positions[:, 2].min() + positions[:, 2].max()) / 2.0)
+    summary = describe_constraints(interface)
+    masses = atoms.get_masses()
+    heights = sorted({round(wall["height"], 6) for wall in summary["walls"]})
+    off_heights = {
+        heights[int(k.split(":")[1])]
+        for k in off
+        if k.startswith("wall:") and k in items
+    }
+    off_bonds = {int(k.split(":")[1]) for k in off if k.startswith("bond:")}
+    off_com = {int(k.split(":")[1]) for k in off if k.startswith("com:")}
+    summary = {
+        "bonds": [
+            pair for n, pair in enumerate(summary["bonds"]) if n not in off_bonds
+        ],
+        "com": [group for n, group in enumerate(summary["com"]) if n not in off_com],
+        "walls": [
+            w for w in summary["walls"] if round(w["height"], 6) not in off_heights
+        ],
+    }
+    centers = []
+    for group in summary["com"]:
+        center = (positions[group] * masses[group, None]).sum(axis=0) / masses[
+            group
+        ].sum()
+        centers.append({"indices": group, "center": [float(x) for x in center]})
 
     return {
         "atoms": atom_items,
-        "ghosts": ghosts,
-        "bonds": bonds,
-        "cell": cell.tolist(),
-        "sites": site_items,
-        "center": [float(x) for x in center],
+        "bonds": find_bonds(interface),
+        "cell": np.asarray(atoms.cell).tolist(),
+        "sites": [
+            {
+                "index": index,
+                "kind": site.kind,
+                "x": site.coords[0],
+                "y": site.coords[1],
+                "z": site.coords[2],
+                "color": SITE_COLORS.get(site.kind, "#888888"),
+            }
+            for index, site in enumerate(sites)
+        ],
+        "constraints": {
+            "bonds": summary["bonds"],
+            "com": centers,
+            "walls": summary["walls"],
+        },
     }

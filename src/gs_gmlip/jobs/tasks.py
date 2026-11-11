@@ -9,19 +9,27 @@ picks them up from ``TASKS`` without further wiring.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
 from ase import units
+from ase.filters import FrechetCellFilter
 from ase.md.langevin import Langevin
+from ase.md.nose_hoover_chain import MTKNPT, IsotropicMTKNPT
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.optimize import BFGS, FIRE, LBFGS
 
-from gs_gmlip.evaluator.calculators import CalculatorEvaluator, get_calculator
+from gs_gmlip.evaluator.calculators import (
+    CalculatorEvaluator,
+    get_calculator,
+    level_of_theory,
+)
+from gs_gmlip.evaluator.vasp import DEFAULT_PRESET, write_vasp_inputs
 from gs_gmlip.interface.core import Interface
-from gs_gmlip.interface.operations import adsorbate_atoms
+from gs_gmlip.interface.molecules import MoleculeLibrary
 from gs_gmlip.jobs.spec import JobSpec
 from gs_gmlip.search.ga.runner import GARunner
 from gs_gmlip.search.gcmc.runner import GCMCRunner
@@ -55,11 +63,39 @@ class TaskContext:
     params: dict[str, Any] = field(default_factory=dict)
     n_structures: int = 0
     last_structure_id: int | None = None
+    _input_role: str | None = field(default=None, repr=False)
+
+    def input_role(self) -> str:
+        """Role label of the job's input structure (looked up once)."""
+        if self._input_role is None:
+            self._input_role = self.store.record(self.spec.structure_id).role
+        return self._input_role
+
+    def role_of(self, interface: Interface) -> str:
+        """Role of a structure this job produced.
+
+        Bulk and molecule inputs keep their role. A labelled surface input
+        yields ``adsorbed`` structures as soon as adsorbates are present and
+        ``surface`` otherwise, so search tasks label their candidates correctly.
+        """
+        base = self.input_role()
+        if base in ("surface", "adsorbed"):
+            return (
+                "adsorbed"
+                if (interface.adsList or interface.clusterList)
+                else "surface"
+            )
+        return base
 
     def save(
-        self, interface: Interface, stage: str, method: str, step: int | None = None
+        self,
+        interface: Interface,
+        stage: str,
+        method: str,
+        step: int | None = None,
+        score: float | None = None,
     ) -> int:
-        """Write a structure produced by this job to the store."""
+        """Write a structure produced by this job to the store, labelled with role and level."""
         self.last_structure_id = self.store.add(
             interface,
             stage=stage,
@@ -69,6 +105,9 @@ class TaskContext:
             job_id=self.spec.job_id,
             step=step,
             label=self.spec.label,
+            score=score,
+            role=self.role_of(interface),
+            level=level_of_theory(self.spec.calculator, self.spec.calculator_params),
         )
         self.n_structures += 1
         return self.last_structure_id
@@ -77,6 +116,10 @@ class TaskContext:
         """Publish progress (fraction complete and a short message)."""
         if self.on_progress is not None:
             self.on_progress(self, progress, message)
+
+    def block(self, name: str):
+        """Building block by name: a built-in adsorbate or a permanent library molecule."""
+        return MoleculeLibrary(self.store.path.parent).atoms(name)
 
     def load_input(self) -> Interface:
         """Load the job's input structure."""
@@ -168,6 +211,31 @@ def singlepoint(context: TaskContext) -> None:
 
 
 @register_task(
+    "vasp_inputs",
+    defaults={
+        "preset": DEFAULT_PRESET,
+        "precision": "normal",
+        "dispersion": "none",
+        "user_incar_settings": {},
+    },
+    description="Write VASP inputs from a pymatgen input set into the job directory (no calculation)",
+)
+def vasp_inputs(context: TaskContext) -> None:
+    """Write INCAR/KPOINTS/POSCAR/POTCAR for the input structure; the calculator is not used."""
+    params = context.params
+    directory = write_vasp_inputs(
+        context.load_input(),
+        context.workdir / "vasp",
+        preset=str(params["preset"]),
+        precision=str(params["precision"]),
+        dispersion=str(params["dispersion"]),
+        user_incar_settings=dict(params["user_incar_settings"]),
+    )
+    written = ", ".join(sorted(path.name for path in directory.iterdir()))
+    context.report(1.0, f"VASP inputs in {directory}: {written}")
+
+
+@register_task(
     "relax",
     defaults={"optimizer": "BFGS", "fmax": 0.05, "steps": 200, "write_interval": 5},
     description="Local geometry optimization (fixed atoms stay fixed)",
@@ -204,7 +272,61 @@ def relax(context: TaskContext) -> None:
 
 
 @register_task(
-    "md",
+    "cell_relax",
+    defaults={
+        "optimizer": "BFGS",
+        "fmax": 0.02,
+        "steps": 300,
+        "write_interval": 5,
+        "hydrostatic": False,
+        "constant_volume": False,
+        "pressure_GPa": 0.0,
+    },
+    description="Bulk: relax atomic positions and the cell (needs a calculator with stress)",
+)
+def cell_relax(context: TaskContext) -> None:
+    """Relax positions and lattice together, storing every ``write_interval``-th step.
+
+    Meant for bulk cells: a slab's vacuum direction would collapse.
+    """
+    params = context.params
+    fmax, steps = float(params["fmax"]), int(params["steps"])
+    interval = max(1, int(params["write_interval"]))
+    method = str(params["optimizer"])
+    interface = context.load_input()
+    atoms = interface.interface
+    atoms.calc = context.calculator()
+    cell_filter = FrechetCellFilter(
+        atoms,
+        hydrostatic_strain=bool(params["hydrostatic"]),
+        constant_volume=bool(params["constant_volume"]),
+        scalar_pressure=float(params["pressure_GPa"]) * units.GPa,
+    )
+    optimizer = OPTIMIZERS[method](cell_filter, logfile=None)
+
+    def summary() -> str:
+        a, b, c = atoms.cell.lengths()
+        return (
+            f"E = {atoms.get_potential_energy():.4f} eV, V = {atoms.get_volume():.3f} Å³, "
+            f"a, b, c = {a:.4f}, {b:.4f}, {c:.4f} Å"
+        )
+
+    def observe() -> None:
+        step = optimizer.nsteps
+        if step > 0 and step % interval == 0:
+            interface.substrate = atoms[: len(interface.substrate)]
+            context.save(interface, stage="cell_relax_step", method=method, step=step)
+        context.report(min(step / max(steps, 1), 0.99), f"step {step}: {summary()}")
+
+    optimizer.attach(observe, interval=1)
+    optimizer.run(fmax=fmax, steps=steps)
+    interface.substrate = atoms[: len(interface.substrate)]
+    context.save(interface, stage="cell_relaxed", method=method, step=optimizer.nsteps)
+    context.report(1.0, f"cell relaxed in {optimizer.nsteps} steps: {summary()}")
+
+
+@register_task(
+    "nvt",
     defaults={
         "temperature": 300.0,
         "timestep_fs": 1.0,
@@ -213,10 +335,10 @@ def relax(context: TaskContext) -> None:
         "write_interval": 10,
         "seed": 0,
     },
-    description="NVT Langevin molecular dynamics",
+    description="NVT molecular dynamics (Langevin thermostat); constraints are honoured",
 )
-def molecular_dynamics(context: TaskContext) -> None:
-    """Run Langevin MD, storing every ``write_interval``-th frame."""
+def nvt(context: TaskContext) -> None:
+    """Run Langevin NVT MD, storing every ``write_interval``-th frame."""
     params = context.params
     steps = int(params["steps"])
     interval = max(1, int(params["write_interval"]))
@@ -237,7 +359,7 @@ def molecular_dynamics(context: TaskContext) -> None:
 
     def observe() -> None:
         step = dynamics.nsteps
-        context.save(interface, stage="md", method="Langevin", step=step)
+        context.save(interface, stage="md", method="NVT-Langevin", step=step)
         context.report(
             min(step / max(steps, 1), 0.99),
             f"step {step}: E = {atoms.get_potential_energy():.4f} eV, T = {atoms.get_temperature():.0f} K",
@@ -245,7 +367,72 @@ def molecular_dynamics(context: TaskContext) -> None:
 
     dynamics.attach(observe, interval=interval)
     dynamics.run(steps)
-    context.report(1.0, f"{steps} MD steps at {temperature:.0f} K")
+    context.report(1.0, f"{steps} NVT steps at {temperature:.0f} K")
+
+
+@register_task(
+    "npt",
+    defaults={
+        "temperature": 300.0,
+        "pressure_GPa": 0.0,
+        "timestep_fs": 1.0,
+        "steps": 200,
+        "tdamp_fs": 100.0,
+        "pdamp_fs": 1000.0,
+        "isotropic": True,
+        "write_interval": 10,
+        "seed": 0,
+    },
+    description="Bulk: NPT molecular dynamics (MTK Nose-Hoover chains; needs stress, no constraints)",
+)
+def npt(context: TaskContext) -> None:
+    """Run Martyna-Tobias-Klein NPT MD, storing every ``write_interval``-th frame.
+
+    Meant for bulk cells. ``isotropic`` scales the cell uniformly; otherwise
+    the full cell fluctuates.
+    """
+    params = context.params
+    steps = int(params["steps"])
+    interval = max(1, int(params["write_interval"]))
+    temperature = float(params["temperature"])
+    interface = context.load_input()
+    atoms = interface.interface
+    if atoms.constraints:
+        raise ValueError(
+            "NPT does not support constraints; release fixed atoms or use NVT"
+        )
+    atoms.calc = context.calculator()
+    MaxwellBoltzmannDistribution(
+        atoms, temperature_K=temperature, rng=np.random.default_rng(int(params["seed"]))
+    )
+    isotropic = bool(params["isotropic"])
+    dynamics = (IsotropicMTKNPT if isotropic else MTKNPT)(
+        atoms,
+        timestep=float(params["timestep_fs"]) * units.fs,
+        temperature_K=temperature,
+        pressure_au=float(params["pressure_GPa"]) * units.GPa,
+        tdamp=float(params["tdamp_fs"]) * units.fs,
+        pdamp=float(params["pdamp_fs"]) * units.fs,
+        logfile=None,
+    )
+    method = "NPT-MTK-iso" if isotropic else "NPT-MTK"
+
+    def observe() -> None:
+        step = dynamics.nsteps
+        interface.substrate = atoms[: len(interface.substrate)]
+        context.save(interface, stage="md", method=method, step=step)
+        context.report(
+            min(step / max(steps, 1), 0.99),
+            f"step {step}: E = {atoms.get_potential_energy():.4f} eV, "
+            f"T = {atoms.get_temperature():.0f} K, V = {atoms.get_volume():.3f} Å³",
+        )
+
+    dynamics.attach(observe, interval=interval)
+    dynamics.run(steps)
+    context.report(
+        1.0,
+        f"{steps} NPT steps at {temperature:.0f} K, V = {atoms.get_volume():.3f} Å³",
+    )
 
 
 class _StoringEvaluator(CalculatorEvaluator):
@@ -253,10 +440,24 @@ class _StoringEvaluator(CalculatorEvaluator):
 
     Used by the search tasks, so the database grows with each relaxation the
     search performs (accepted or not) instead of only at the end.
+
+    Args:
+        context: Task context to save through.
+        stage: Stage written on each row.
+        method: Method written on each row.
+        total: Expected number of evaluations (for progress only).
+        score: Optional objective ``interface -> eV`` stored with each row.
+        **kwargs: Passed to ``CalculatorEvaluator`` (``fmax``, ``relax_steps``).
     """
 
     def __init__(
-        self, context: TaskContext, stage: str, method: str, total: int, **kwargs
+        self,
+        context: TaskContext,
+        stage: str,
+        method: str,
+        total: int,
+        score: Callable[[Interface], float | None] | None = None,
+        **kwargs,
     ):
         super().__init__(
             context.spec.calculator, context.spec.calculator_params, **kwargs
@@ -265,19 +466,131 @@ class _StoringEvaluator(CalculatorEvaluator):
         self._stage = stage
         self._method = method
         self._total = max(total, 1)
+        self._score = score
         self._count = 0
 
     def evaluate(self, interface, relax=False, fmax=None, steps=None):
         interface = super().evaluate(interface, relax=relax, fmax=fmax, steps=steps)
         self._count += 1
+        energy = interface.interface.get_potential_energy()
+        score = self._score(interface) if self._score is not None else None
         self._context.save(
-            interface, stage=self._stage, method=self._method, step=self._count
+            interface,
+            stage=self._stage,
+            method=self._method,
+            step=self._count,
+            score=score,
         )
-        self._context.report(
-            min(self._count / self._total, 0.99),
-            f"evaluation {self._count}: E = {interface.interface.get_potential_energy():.4f} eV",
-        )
+        message = f"evaluation {self._count}: E = {energy:.4f} eV"
+        if score is not None:
+            message += f", score = {score:.4f} eV"
+        self._context.report(min(self._count / self._total, 0.99), message)
         return interface
+
+
+def count_species(interface: Interface, blocks: dict[str, Any]) -> Counter:
+    """Count adsorbate groups per block name by matching their composition.
+
+    Args:
+        interface: The structure to analyse.
+        blocks: Block name -> ASE ``Atoms`` template.
+    """
+    keys = {
+        "".join(sorted(atoms.get_chemical_symbols())): name
+        for name, atoms in blocks.items()
+    }
+    counts: Counter = Counter()
+    symbols = interface.interface.get_chemical_symbols()
+    for group in interface.adsList:
+        name = keys.get("".join(sorted(symbols[i] for i in group)))
+        if name is not None:
+            counts[name] += 1
+    return counts
+
+
+class GrandPotential:
+    """Grand potential relative to the first structure scored.
+
+    ``score = (E - E_ref) - sum_i mu_i (N_i - N_i,ref)`` in eV, where the
+    reference is the starting surface of the search. Lower is more stable at
+    the given chemical potentials; the reference itself scores 0.
+
+    Args:
+        blocks: Block name -> ASE ``Atoms`` template.
+        chemical_potentials: Block name -> chemical potential in eV.
+    """
+
+    def __init__(self, blocks: dict[str, Any], chemical_potentials: dict[str, float]):
+        self.blocks = blocks
+        self.chemical_potentials = chemical_potentials
+        self._reference: tuple[float, Counter] | None = None
+
+    def __call__(self, interface: Interface) -> float:
+        energy = float(interface.interface.get_potential_energy())
+        counts = count_species(interface, self.blocks)
+        if self._reference is None:
+            self._reference = (energy, counts)
+        reference_energy, reference_counts = self._reference
+        exchange = sum(
+            mu * (counts[name] - reference_counts[name])
+            for name, mu in self.chemical_potentials.items()
+        )
+        return energy - reference_energy - exchange
+
+
+SearcherFactory = Callable[[CalculatorEvaluator, Interface, dict[str, Any], Path], Any]
+
+
+def register_searcher(
+    kind: str,
+    factory: SearcherFactory,
+    defaults: dict[str, Any],
+    description: str = "",
+    score: Callable[[dict[str, Any]], Callable[[Interface], float | None]]
+    | None = None,
+) -> None:
+    """Register a structure-search algorithm as a job kind.
+
+    This is the plugin entry point for new search methods. The searcher only
+    has to subclass ``BaseSearcher`` and evaluate candidates through the
+    evaluator it is given; every evaluated structure is then written to the
+    store with provenance, progress is reported, and the job shows up in the
+    app with a parameter form built from ``defaults``.
+
+    Args:
+        kind: Job kind (also the stage and method written on each row).
+        factory: ``(evaluator, start_structure, params, workdir) -> BaseSearcher``.
+        defaults: Default parameters. ``n_steps`` (search steps), ``fmax``
+            and ``relax_steps`` (relaxation settings of the evaluator) are
+            read by the wrapper when present.
+        description: One-line description shown in the app.
+        score: Optional ``params -> (interface -> eV)`` building the objective
+            stored with each row and used for ranking (lower is better).
+    """
+    defaults = {"n_steps": 20, "fmax": 0.1, "relax_steps": 100, **defaults}
+
+    def run(context: TaskContext) -> None:
+        params = context.params
+        n_steps = int(params["n_steps"])
+        evaluator = _StoringEvaluator(
+            context,
+            stage=kind,
+            method=kind,
+            total=n_steps,
+            score=score(params) if score is not None else None,
+            fmax=float(params["fmax"]),
+            relax_steps=int(params["relax_steps"]),
+        )
+        searcher = factory(evaluator, context.load_input(), params, context.workdir)
+        searcher.setup()
+        for _ in range(n_steps):
+            info = searcher.step()
+            logger.info("%s step: %s", kind, info)
+        context.report(
+            1.0, f"{kind} finished: {context.n_structures} structures evaluated"
+        )
+
+    TASKS[kind] = Task(kind, run, defaults, description)
 
 
 @register_task(
@@ -309,7 +622,7 @@ def genetic_algorithm(context: TaskContext) -> None:
     runner = GARunner(
         evaluator=evaluator,
         substrate=context.load_input(),
-        blocks=[adsorbate_atoms(name) for name in blocks],
+        blocks=[context.block(name) for name in blocks],
         counts=[int(count) for count in blocks.values()],
         workdir=str(context.workdir),
         population_size=int(params["population_size"]),
@@ -343,26 +656,29 @@ def genetic_algorithm(context: TaskContext) -> None:
     description="Grand-canonical Monte Carlo at fixed chemical potentials",
 )
 def grand_canonical_mc(context: TaskContext) -> None:
-    """Run a GCMC search; every evaluated proposal is stored."""
+    """Run a GCMC search; every evaluated proposal is stored with its grand potential."""
     params = context.params
     blocks: list[str] = list(params["blocks"])
     n_steps = int(params["n_steps"])
+    chemical_potentials = {
+        k: float(v) for k, v in dict(params["chemical_potentials"]).items()
+    }
+    templates = {name: context.block(name) for name in blocks}
     evaluator = _StoringEvaluator(
         context,
         stage="gcmc",
         method="GCMC",
         total=n_steps + 1,
+        score=GrandPotential(templates, chemical_potentials),
         fmax=float(params["fmax"]),
         relax_steps=int(params["relax_steps"]),
     )
     runner = GCMCRunner(
         evaluator=evaluator,
         substrate=context.load_input(),
-        blocks=[adsorbate_atoms(name) for name in blocks],
+        blocks=[templates[name] for name in blocks],
         block_names=blocks,
-        chemical_potentials={
-            k: float(v) for k, v in dict(params["chemical_potentials"]).items()
-        },
+        chemical_potentials=chemical_potentials,
         temperature=float(params["temperature"]),
         max_displacement=float(params["max_displacement"]),
         workdir=str(context.workdir),

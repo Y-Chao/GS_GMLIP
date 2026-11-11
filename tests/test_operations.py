@@ -166,3 +166,204 @@ def test_set_fixed_and_fix_bottom_layers(cu111):
 def test_edit_rejects_bad_index(cu111):
     with pytest.raises(IndexError):
         ops.delete_atoms(cu111, [10_000])
+
+
+def test_rotate_atoms_about_centroid(cu111):
+    with_co = ops.place_adsorbate(
+        cu111, "CO", ops.find_adsorption_sites(cu111)[0].coords
+    )
+    pair = with_co.adsList[0]
+    before = with_co.interface.positions[pair]
+    after = ops.rotate_atoms(with_co, pair, 90.0, axis=(1, 0, 0)).interface.positions[
+        pair
+    ]
+    # Centroid and bond length are preserved; the bond turns from z into the xy plane.
+    assert np.allclose(after.mean(axis=0), before.mean(axis=0), atol=1e-8)
+    assert np.linalg.norm(after[1] - after[0]) == pytest.approx(
+        np.linalg.norm(before[1] - before[0])
+    )
+    assert abs((after[1] - after[0])[2]) < 1e-8
+    # A full turn is the identity; other atoms never move.
+    full = ops.rotate_atoms(with_co, pair, 360.0).interface.positions
+    assert np.allclose(full, with_co.interface.positions, atol=1e-8)
+
+
+def test_rotate_atoms_about_explicit_anchor(cu111):
+    moved = ops.rotate_atoms(cu111, [0], 180.0, axis=(0, 0, 1), anchor=(0, 0, 0))
+    original = cu111.interface.positions[0]
+    assert np.allclose(
+        moved.interface.positions[0], [-original[0], -original[1], original[2]]
+    )
+
+
+def test_constraints_accumulate_and_survive_edits(cu111):
+    with_co = ops.place_adsorbate(
+        cu111, "CO", ops.find_adsorption_sites(cu111)[0].coords
+    )
+    first, second = with_co.adsList[0]
+    result = ops.add_bond_constraint(with_co, first, second)
+    result = ops.add_bond_constraint(result, second, first)  # duplicate is ignored
+    result = ops.add_bond_constraint(result, 0, first)
+    result = ops.add_com_constraint(result, [first, second])
+    result = ops.add_wall(result, [first, second], height=20.0)
+    summary = ops.describe_constraints(result)
+    assert summary["bonds"] == [[first, second], [0, first]]
+    assert summary["com"] == [[first, second]]
+    assert [wall["index"] for wall in summary["walls"]] == [first, second]
+    assert ops.describe_constraints(with_co) == {"bonds": [], "com": [], "walls": []}
+
+    for edited in (
+        ops.translate_atoms(result, [first], [0.0, 0.0, 0.1]),
+        ops.substitute_atoms(result, [3], "Pt"),
+        ops.set_fixed(result, [result.relax[0]], True),
+        ops.fix_bottom_layers(result, 2),
+        ops.place_adsorbate(result, "O", (1.0, 1.0, 20.0)),
+    ):
+        assert ops.describe_constraints(edited) == summary
+        assert edited.fix  # frozen atoms are kept alongside
+    # Deleting an atom re-indexes the surviving constraints and drops those that used it.
+    after_delete = ops.describe_constraints(ops.delete_atoms(result, [0]))
+    assert after_delete["bonds"] == [
+        [first - 1, second - 1]
+    ]  # the (0, first) bond is gone
+    assert after_delete["com"] == [[first - 1, second - 1]]
+    assert [wall["index"] for wall in after_delete["walls"]] == [first - 1, second - 1]
+    without_first = ops.describe_constraints(ops.delete_atoms(result, [first]))
+    assert without_first["bonds"] == [] and without_first["com"] == [[second - 1]]
+    assert [wall["index"] for wall in without_first["walls"]] == [second - 1]
+    cleared = ops.clear_constraints(result)
+    assert ops.extra_constraints(cleared) == []
+    assert cleared.fix == result.fix
+
+
+def test_wall_pushes_back_only_above_the_plane(cu111):
+    from ase.calculators.emt import EMT
+
+    with_o = ops.place_adsorbate(cu111, "O", ops.find_adsorption_sites(cu111)[0].coords)
+    oxygen = len(with_o.interface) - 1
+    z = with_o.interface.positions[oxygen, 2]
+
+    def force_z(height):
+        atoms = ops.add_wall(
+            with_o, [oxygen], height=height, spring_constant=4.0
+        ).interface
+        atoms.calc = EMT()
+        return atoms.get_forces()[oxygen, 2]
+
+    free = with_o.interface.copy()
+    free.calc = EMT()
+    unconstrained = free.get_forces()[oxygen, 2]
+    assert force_z(z + 1.0) == pytest.approx(unconstrained)
+    assert force_z(z - 0.5) == pytest.approx(unconstrained - 4.0 * 0.5)
+
+
+def test_bond_constraint_needs_two_atoms(cu111):
+    with pytest.raises(ValueError, match="two different atoms"):
+        ops.add_bond_constraint(cu111, 1, 1)
+
+
+@pytest.mark.parametrize("position", ["center", "bottom"])
+def test_adjust_vacuum_moves_everything_rigidly(cu111, position):
+    with_co = ops.place_adsorbate(
+        cu111, "CO", ops.find_adsorption_sites(cu111)[0].coords
+    )
+    first, second = with_co.adsList[0]
+    start = ops.add_bond_constraint(with_co, first, second)
+    start = ops.add_wall(
+        start, [second], height=start.interface.positions[second, 2] + 2.0
+    )
+    before = start.interface
+    thickness = np.ptp(before.positions[:, 2])
+
+    result = ops.adjust_vacuum(start, 20.0, position=position)
+    after = result.interface
+    assert after.cell[2, 2] == pytest.approx(thickness + 20.0)
+    assert np.allclose(after.cell[:2], before.cell[:2])
+    lowest = after.positions[:, 2].min()
+    expected_lowest = ops.BOTTOM_MARGIN if position == "bottom" else 10.0
+    assert lowest == pytest.approx(expected_lowest)
+    assert after.positions[:, 2].max() == pytest.approx(expected_lowest + thickness)
+
+    # A rigid shift along z only: in-plane coordinates and all interatomic vectors survive.
+    shift = after.positions - before.positions
+    assert np.allclose(shift[:, :2], 0.0, atol=1e-9)
+    assert np.allclose(shift[:, 2], shift[0, 2], atol=1e-9)
+
+    # Partition, frozen atoms, and constraints are kept; the wall moves with the atoms.
+    assert result.fix == start.fix and result.adsList == start.adsList
+    assert list(after.constraints[0].index) == start.fix
+    summary, original = (
+        ops.describe_constraints(result),
+        ops.describe_constraints(start),
+    )
+    assert summary["bonds"] == original["bonds"]
+    assert summary["walls"][0]["height"] == pytest.approx(
+        original["walls"][0]["height"] + shift[0, 2]
+    )
+    assert len(start.interface) == len(before) and np.allclose(
+        start.interface.positions, before.positions
+    )
+
+
+def test_adjust_vacuum_roundtrip_and_errors(cu111):
+    wide = ops.adjust_vacuum(cu111, 30.0, position="bottom")
+    back = ops.adjust_vacuum(wide, 12.0, position="center")
+    assert np.allclose(back.interface.positions, cu111.interface.positions, atol=1e-8)
+    assert np.allclose(back.interface.cell, cu111.interface.cell, atol=1e-8)
+    with pytest.raises(ValueError, match="unknown position"):
+        ops.adjust_vacuum(cu111, 15.0, position="top")
+    with pytest.raises(ValueError, match="positive"):
+        ops.adjust_vacuum(cu111, 0.0)
+    with pytest.raises(ValueError, match="margin"):
+        ops.adjust_vacuum(cu111, 0.5, position="bottom")
+
+
+def test_list_and_remove_items(cu111):
+    sites = ops.find_adsorption_sites(cu111)
+    system = ops.place_adsorbate(cu111, "CO", sites[0].coords)
+    system = ops.place_adsorbate(system, "OH", sites[20].coords)
+    n_slab = len(cu111.interface)
+    system = ops.add_bond_constraint(system, n_slab, n_slab + 1)
+    system = ops.add_com_constraint(system, [n_slab + 2, n_slab + 3])
+    system = ops.add_wall(system, [n_slab + 1, n_slab + 3], height=25.0)
+
+    items = {item["key"]: item for item in ops.list_items(system)}
+    assert list(items) == [
+        "substrate",
+        "fixed",
+        "ads:0",
+        "ads:1",
+        "bond:0",
+        "com:0",
+        "wall:0",
+    ]
+    assert not items["substrate"]["removable"] and all(
+        items[k]["removable"] for k in list(items)[1:]
+    )
+    assert (
+        items["ads:0"]["atoms"] == [n_slab, n_slab + 1]
+        and "CO" in items["ads:0"]["label"]
+    )
+    assert (
+        items["wall:0"]["atoms"] == [n_slab + 1, n_slab + 3]
+        and "25.00" in items["wall:0"]["label"]
+    )
+    assert items["fixed"]["atoms"] == system.fix
+
+    # Removing the first adsorbate drops its bond and its wall atom; the rest is re-indexed.
+    less = ops.remove_items(system, ["ads:0", "nope", "substrate"])
+    keys = [item["key"] for item in ops.list_items(less)]
+    assert keys == ["substrate", "fixed", "ads:0", "com:0", "wall:0"]
+    assert len(less.interface) == n_slab + 2 and len(less.substrate) == n_slab
+    summary = ops.describe_constraints(less)
+    assert summary["com"] == [[n_slab, n_slab + 1]]
+    assert [wall["index"] for wall in summary["walls"]] == [n_slab + 1]
+
+    only_constraints = ops.remove_items(system, ["fixed", "bond:0", "com:0", "wall:0"])
+    assert [item["key"] for item in ops.list_items(only_constraints)] == [
+        "substrate",
+        "ads:0",
+        "ads:1",
+    ]
+    assert only_constraints.fix == [] and only_constraints.interface.constraints == []
+    assert len(system.interface) == n_slab + 4 and system.fix  # input untouched

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from gs_gmlip.jobs.spec import read_spec, read_status, write_status
 from gs_gmlip.jobs.tasks import run_task
+from gs_gmlip.plugins import load_plugins
 from gs_gmlip.store import Project
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ def run_job_dir(job_dir: str | Path) -> int:
     """
     job_dir = Path(job_dir).resolve()
     project = Project(job_dir.parent.parent)
+    load_plugins(project.root)
     spec = read_spec(job_dir)
     status = read_status(job_dir)
     status.state = "running"

@@ -82,3 +82,26 @@ def test_project_layout(tmp_path):
     project = Project(tmp_path / "proj")
     assert project.jobs_dir.is_dir()
     assert project.store.path == project.root / "structures.db"
+
+
+def test_score_is_stored_and_optional(store, slab):
+    plain = store.add(slab, stage="gcmc")
+    scored = store.add(slab, stage="gcmc", score=-1.25)
+    assert store.record(plain).score is None
+    assert store.record(scored).score == pytest.approx(-1.25)
+
+
+def test_extra_constraints_roundtrip(store, slab):
+    n_atoms = len(slab.interface)
+    constrained = ops.add_bond_constraint(slab, n_atoms - 2, n_atoms - 1)
+    constrained = ops.add_com_constraint(constrained, [n_atoms - 2, n_atoms - 1])
+    constrained = ops.add_wall(
+        constrained, [n_atoms - 1], height=18.0, spring_constant=3.0
+    )
+    loaded = store.get(store.add(constrained, stage="built"))
+    assert loaded.fix == slab.fix
+    assert ops.describe_constraints(loaded) == {
+        "bonds": [[n_atoms - 2, n_atoms - 1]],
+        "com": [[n_atoms - 2, n_atoms - 1]],
+        "walls": [{"index": n_atoms - 1, "height": 18.0}],
+    }

@@ -7,6 +7,7 @@ from ase.calculators.emt import EMT
 from ase.calculators.singlepoint import SinglePointCalculator
 
 from gs_gmlip.evaluator import (
+    matgl_models,
     CalculatorEvaluator,
     calculator_entries,
     get_calculator,
@@ -19,7 +20,8 @@ def test_builtin_entries():
     entries = calculator_entries()
     assert {"emt", "matgl", "mace", "vasp"} <= set(entries)
     assert entries["emt"].available
-    assert entries["matgl"].defaults["model"].startswith("TensorNet-MatPES-r2SCAN")
+    assert entries["matgl"].defaults["model"] == "TensorNet-PES-MatPES-r2SCAN-2025.2"
+    assert entries["matgl"].defaults["model"] in entries["matgl"].choices["model"]
 
 
 def test_get_calculator_and_errors():
@@ -60,3 +62,10 @@ def test_evaluator_reuses_calculator_and_freezes_results():
         first.interface.get_potential_energy()
         <= second.interface.get_potential_energy()
     )
+
+
+def test_matgl_models_default_first_and_pes_only():
+    models = matgl_models()
+    assert models[0] == "TensorNet-PES-MatPES-r2SCAN-2025.2"
+    assert all("-PES-" in name for name in models)
+    assert any("PBE" in name for name in models)

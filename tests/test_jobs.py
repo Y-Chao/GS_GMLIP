@@ -36,7 +36,9 @@ def _wait(executor, job_id, timeout=120.0):
 
 
 def test_registered_tasks():
-    assert {"singlepoint", "relax", "md", "ga", "gcmc"} <= set(TASKS)
+    assert {"singlepoint", "relax", "cell_relax", "nvt", "npt", "ga", "gcmc"} <= set(
+        TASKS
+    )
 
 
 def test_spec_roundtrip(tmp_path):
@@ -95,7 +97,7 @@ def test_singlepoint_then_relax_then_md_write_expected_rows(project, input_id):
 
     context = run_task(
         JobSpec(
-            kind="md",
+            kind="nvt",
             structure_id=input_id,
             job_id="md-a",
             params={"steps": 20, "write_interval": 10},
@@ -134,20 +136,33 @@ def test_ga_stores_every_evaluated_candidate(project, input_id):
     assert all(r.energy is not None for r in records)
 
 
-def test_gcmc_stores_evaluations(project, input_id):
+def test_gcmc_stores_evaluations_with_grand_potential(project):
+    bare = ops.build_slab(
+        ops.make_bulk("Cu", "fcc", 3.61), (1, 1, 1), layers=3, fix_layers=1
+    )
+    bare_id = project.store.add(bare, stage="built")
     context = run_task(
         JobSpec(
             kind="gcmc",
-            structure_id=input_id,
+            structure_id=bare_id,
             job_id="gcmc-a",
-            params={"n_steps": 6, "relax_steps": 3},
+            params={"n_steps": 12, "relax_steps": 3},
         ),
         project.store,
         project.root,
     )
     records = project.store.records(job_id="gcmc-a")
-    assert 1 <= context.n_structures == len(records) <= 7
+    assert 2 <= context.n_structures == len(records) <= 13
     assert {r.stage for r in records} == {"gcmc"}
+    # The starting surface is the reference; every other row is scored against it.
+    reference = records[0]
+    assert reference.score == pytest.approx(0.0)
+    mu = TASKS["gcmc"].defaults["chemical_potentials"]["O"]
+    assert any(record.natoms > reference.natoms for record in records)
+    for record in records:
+        extra_oxygen = record.natoms - reference.natoms
+        expected = record.energy - reference.energy - mu * extra_oxygen
+        assert record.score == pytest.approx(expected, abs=1e-8)
 
 
 def test_worker_records_failure(project, input_id):
@@ -191,7 +206,7 @@ def test_local_executor_cancel(project, input_id):
     executor = LocalExecutor(project)
     job_id = executor.submit(
         JobSpec(
-            kind="md",
+            kind="nvt",
             structure_id=input_id,
             params={"steps": 2_000_000, "write_interval": 1000},
         )
@@ -203,3 +218,101 @@ def test_local_executor_cancel(project, input_id):
     executor.cancel(job_id)
     assert executor.status(job_id).state == "cancelled"
     executor.cancel(job_id)  # cancelling twice is a no-op
+
+
+@pytest.fixture
+def bulk_id(project):
+    from pymatgen.io.ase import AseAtomsAdaptor
+
+    from gs_gmlip.interface.core import Interface
+
+    bulk = ops.make_bulk("Cu", "fcc", 3.70)
+    bulk.make_supercell([2, 2, 2])
+    return project.store.add(
+        Interface(substrate=AseAtomsAdaptor.get_atoms(bulk)), stage="built"
+    )
+
+
+def test_cell_relax_finds_emt_lattice_constant_and_feeds_slab_builder(project, bulk_id):
+    context = run_task(
+        JobSpec(
+            kind="cell_relax",
+            structure_id=bulk_id,
+            job_id="cell-a",
+            params={"write_interval": 2},
+        ),
+        project.store,
+        project.root,
+    )
+    records = project.store.records(job_id="cell-a")
+    assert context.n_structures == len(records)
+    assert records[-1].stage == "cell_relaxed"
+    assert {r.stage for r in records[:-1]} <= {"cell_relax_step"}
+    relaxed = project.store.get(records[-1].id)
+    # EMT equilibrium lattice constant of fcc Cu is 3.59 Å (2x2x2 conventional supercell).
+    assert relaxed.interface.cell.lengths() == pytest.approx([2 * 3.59] * 3, abs=0.02)
+    assert records[-1].energy < project.store.records(job_id="cell-a")[0].energy + 1e-9
+
+    conventional = ops.conventional_cell(relaxed.interface)
+    assert len(conventional) == 4
+    assert conventional.lattice.a == pytest.approx(3.59, abs=0.01)
+    slab = ops.build_slab(conventional, (1, 1, 1), layers=3)
+    distances = slab.interface.get_all_distances(mic=True)
+    distances[distances < 1e-8] = 1e9
+    assert distances.min() == pytest.approx(conventional.lattice.a / 2**0.5, abs=1e-3)
+
+
+@pytest.mark.parametrize("isotropic", [True, False])
+def test_npt_changes_volume_and_stores_frames(project, bulk_id, isotropic):
+    context = run_task(
+        JobSpec(
+            kind="npt",
+            structure_id=bulk_id,
+            job_id=f"npt-{isotropic}".lower(),
+            params={
+                "steps": 30,
+                "write_interval": 10,
+                "temperature": 600.0,
+                "isotropic": isotropic,
+            },
+        ),
+        project.store,
+        project.root,
+    )
+    records = project.store.records(job_id=f"npt-{isotropic}".lower())
+    assert context.n_structures == len(records) == 4
+    assert [r.step for r in records] == [0, 10, 20, 30]
+    start = project.store.get(bulk_id).interface.get_volume()
+    end = project.store.get(records[-1].id).interface.get_volume()
+    # a = 3.70 Å is expanded for EMT Cu, so the barostat must shrink the cell.
+    assert end < start
+
+
+def test_npt_rejects_constraints(project, input_id):
+    with pytest.raises(ValueError, match="does not support constraints"):
+        run_task(
+            JobSpec(kind="npt", structure_id=input_id, job_id="npt-bad"),
+            project.store,
+            project.root,
+        )
+
+
+def test_relax_honours_bond_constraint(project, input_id):
+    start = project.store.get(input_id)
+    n_atoms = len(start.interface)
+    constrained = ops.add_bond_constraint(start, n_atoms - 2, n_atoms - 1)
+    constrained.interface.rattle(0.05, seed=1)
+    bond = constrained.interface.get_distance(n_atoms - 2, n_atoms - 1)
+    row_id = project.store.add(constrained, stage="built")
+    run_task(
+        JobSpec(
+            kind="relax", structure_id=row_id, job_id="relax-c", params={"steps": 15}
+        ),
+        project.store,
+        project.root,
+    )
+    relaxed = project.store.get(project.store.records(job_id="relax-c")[-1].id)
+    assert relaxed.interface.get_distance(n_atoms - 2, n_atoms - 1) == pytest.approx(
+        bond, abs=1e-6
+    )
+    assert ops.describe_constraints(relaxed)["bonds"] == [[n_atoms - 2, n_atoms - 1]]

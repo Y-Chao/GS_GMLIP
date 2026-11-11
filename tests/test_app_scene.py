@@ -1,4 +1,4 @@
-"""Tests for the viewer scene (no NiceGUI needed)."""
+"""Tests for the viewer scene (plain Python)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from gs_gmlip.app.scene import atom_role, build_scene
+from gs_gmlip.app.scene import atom_role, build_scene, element_color, find_bonds
 from gs_gmlip.interface import operations as ops
 
 
@@ -22,35 +22,56 @@ def system():
 def test_scene_is_json_and_marks_roles(system):
     interface, sites = system
     n_atoms, n_substrate = len(interface.interface), len(interface.substrate)
-    scene = build_scene(interface, selection=[0, n_atoms - 1], sites=sites)
+    scene = build_scene(interface, sites)
     json.dumps(scene)
+    assert set(scene) == {"atoms", "bonds", "cell", "sites", "constraints"}
     assert len(scene["atoms"]) == n_atoms
     assert [a["role"] for a in scene["atoms"]] == ["substrate"] * n_substrate + [
         "adsorbate"
     ] * 2
-    assert [a["index"] for a in scene["atoms"] if a["selected"]] == [0, n_atoms - 1]
     assert [a["index"] for a in scene["atoms"] if a["fixed"]] == interface.fix
-    assert scene["bonds"] == [[n_substrate, n_substrate + 1]]
     assert len(scene["sites"]) == len(sites)
-    assert scene["ghosts"] == []
+    assert scene["constraints"] == {"bonds": [], "com": [], "walls": []}
 
 
-def test_fixed_atoms_are_tinted(system):
+def test_fixed_atoms_are_tinted_and_light_elements_use_pmol_colours(system):
     interface, _ = system
     atoms = build_scene(interface)["atoms"]
-    fixed_color = atoms[interface.fix[0]]["color"]
-    free_color = atoms[interface.relax[0]]["color"]
-    assert fixed_color != free_color
+    assert atoms[interface.fix[0]]["color"] != atoms[interface.relax[0]]["color"]
+    assert atoms[interface.relax[0]]["color"] == element_color("Cu")
+    assert element_color("C") == "#d9d9d9"
+    assert element_color("H") == "#fafafa"
+    assert element_color("N") == "#7f7fbf"
+    carbon = next(a for a in atoms if a["elem"] == "C")
+    assert carbon["color"] == "#d9d9d9"
 
 
-def test_ghost_images_are_in_plane_only(system):
+def test_bonds_include_adsorbate_and_never_cross_the_cell(system):
+    interface, _ = system
+    n_substrate = len(interface.substrate)
+    bonds = find_bonds(interface)
+    assert [n_substrate, n_substrate + 1] in bonds  # C-O
+    assert all(i < j for i, j in bonds)
+    # Every drawn bond is a real short contact in the unwrapped cell.
+    atoms = interface.interface
+    assert max(atoms.get_distance(i, j, mic=False) for i, j in bonds) < 3.1
+    # Cu-Cu nearest neighbours inside the cell are bonded.
+    assert any(i < n_substrate and j < n_substrate for i, j in bonds)
+
+
+def test_constraints_appear_in_scene(system):
     interface, _ = system
     n_atoms = len(interface.interface)
-    scene = build_scene(interface, repeat=1)
-    assert len(scene["ghosts"]) == 8 * n_atoms
-    z_real = sorted(round(a["z"], 6) for a in scene["atoms"])
-    z_ghost = sorted({round(g["z"], 6) for g in scene["ghosts"]})
-    assert set(z_ghost) == set(z_real)
+    constrained = ops.add_bond_constraint(interface, n_atoms - 2, n_atoms - 1)
+    constrained = ops.add_com_constraint(constrained, [n_atoms - 2, n_atoms - 1])
+    constrained = ops.add_wall(constrained, [n_atoms - 1], height=19.0)
+    constraints = build_scene(constrained)["constraints"]
+    assert constraints["bonds"] == [[n_atoms - 2, n_atoms - 1]]
+    assert constraints["walls"] == [{"index": n_atoms - 1, "height": 19.0}]
+    (group,) = constraints["com"]
+    assert group["indices"] == [n_atoms - 2, n_atoms - 1]
+    carbon_oxygen = constrained.interface[[n_atoms - 2, n_atoms - 1]]
+    assert group["center"] == pytest.approx(list(carbon_oxygen.get_center_of_mass()))
 
 
 def test_atom_role(system):

@@ -9,7 +9,7 @@ directory that sits next to it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -24,10 +24,18 @@ STAGES: tuple[str, ...] = (
     "singlepoint",
     "relax_step",
     "relaxed",
+    "cell_relax_step",
+    "cell_relaxed",
     "md",
     "ga",
     "gcmc",
+    "imported",
 )
+
+# What a structure is, physically. Reference energies are looked up by role:
+# bulk energies for surface and formation energies, molecule energies for
+# adsorption and chemical potentials, clean surfaces for adsorption energies.
+ROLES: tuple[str, ...] = ("bulk", "molecule", "surface", "adsorbed", "other")
 
 
 @dataclass(frozen=True)
@@ -43,11 +51,20 @@ class StructureRecord:
         calculator: Registered calculator name, empty if none.
         energy: Potential energy in eV, ``None`` if not evaluated.
         fmax: Largest force norm in eV/Å, ``None`` if not evaluated.
+        score: Search objective in eV, lower is better (e.g. the grand
+            potential relative to the starting surface for GCMC), ``None``
+            if the producing task defines none.
         parent_id: Row id this structure was derived from, if any.
         job_id: Job that produced it, empty for hand-built structures.
         step: Step index within the job (optimizer step, MD step, GA step).
         label: Free-text label.
         ctime: Creation time in ase.db units (years since 2000).
+        role: What the structure is, see ``ROLES``; empty if unlabelled.
+        level: Level of theory of the energy, e.g. ``gpaw/PBE-D3/pw600``
+            or ``matgl/TensorNet-PES-MatPES-r2SCAN-2025.2``. Energies are only
+            comparable between structures with the same level.
+        tags: Further labels (e.g. ``potential``, ``net_charge``, ``gc_energy``,
+            ``xc``, ``cutoff``, ``kpts``, ``source``).
     """
 
     id: int
@@ -58,11 +75,15 @@ class StructureRecord:
     calculator: str
     energy: float | None
     fmax: float | None
+    score: float | None
     parent_id: int | None
     job_id: str
     step: int | None
     label: str
     ctime: float
+    role: str = ""
+    level: str = ""
+    tags: dict = field(default_factory=dict)
 
 
 class StructureStore:
@@ -93,6 +114,10 @@ class StructureStore:
         job_id: str = "",
         step: int | None = None,
         label: str = "",
+        score: float | None = None,
+        role: str = "",
+        level: str = "",
+        tags: dict | None = None,
     ) -> int:
         """Write a structure and return its row id.
 
@@ -108,20 +133,38 @@ class StructureStore:
             job_id: Id of the producing job.
             step: Step index within the job.
             label: Free-text label.
+            score: Search objective in eV (lower is better).
+            role: What the structure is, see ``ROLES``.
+            level: Level of theory of the energy.
+            tags: Further JSON-serializable labels.
+
+        Raises:
+            ValueError: For a role outside ``ROLES``.
         """
+        if role and role not in ROLES:
+            raise ValueError(f"unknown role {role!r}; choose from {ROLES}")
         source = interface.interface
         atoms = source.copy()
         if source.calc is not None:
+            results = {}
             try:
-                atoms.calc = SinglePointCalculator(
-                    atoms,
-                    energy=float(source.get_potential_energy()),
-                    forces=source.get_forces(apply_constraint=False),
-                )
-            except Exception:  # noqa: BLE001 - a structure without results is still worth storing
-                atoms.calc = None
+                results["energy"] = float(source.get_potential_energy())
+            except Exception:  # noqa: BLE001 - a structure without an energy is still worth storing
+                results = {}
+            if results:
+                try:
+                    results["forces"] = source.get_forces(apply_constraint=False)
+                except Exception:  # noqa: BLE001 - imported reference data often has energies only
+                    pass
+                atoms.calc = SinglePointCalculator(atoms, **results)
 
-        key_value_pairs: dict[str, str | int] = {"stage": stage}
+        key_value_pairs: dict[str, str | int | float] = {"stage": stage}
+        if role:
+            key_value_pairs["role"] = role
+        if level:
+            key_value_pairs["level"] = level
+        if score is not None:
+            key_value_pairs["score"] = float(score)
         if method:
             key_value_pairs["method"] = method
         if calculator:
@@ -135,6 +178,7 @@ class StructureStore:
 
         data = interface._metadata()
         data["label"] = label
+        data["tags"] = dict(tags or {})
         with self._connect() as db:
             return int(db.write(atoms, key_value_pairs=key_value_pairs, data=data))
 
@@ -155,11 +199,15 @@ class StructureStore:
             calculator=row.get("calc_name", ""),
             energy=row.get("energy"),
             fmax=row.get("fmax"),
+            score=row.get("score"),
             parent_id=row.get("parent_id"),
             job_id=row.get("job_id", ""),
             step=row.get("step"),
             label=str(data.get("label", "")),
             ctime=float(row.ctime),
+            role=row.get("role", ""),
+            level=row.get("level", ""),
+            tags=dict(data.get("tags") or {}),
         )
 
     def record(self, structure_id: int) -> StructureRecord:
@@ -174,6 +222,8 @@ class StructureStore:
         job_id: str | None = None,
         parent_id: int | None = None,
         limit: int | None = None,
+        role: str | None = None,
+        level: str | None = None,
     ) -> list[StructureRecord]:
         """List structure summaries in ascending id order, optionally filtered.
 
@@ -182,6 +232,8 @@ class StructureStore:
             job_id: Keep only structures produced by this job.
             parent_id: Keep only direct children of this structure.
             limit: Keep only the ``limit`` most recent matches.
+            role: Keep only this role.
+            level: Keep only this level of theory.
         """
         if not self.path.exists():
             return []
@@ -192,6 +244,10 @@ class StructureStore:
             filters["job_id"] = job_id
         if parent_id is not None:
             filters["parent_id"] = int(parent_id)
+        if role is not None:
+            filters["role"] = role
+        if level is not None:
+            filters["level"] = level
         with self._connect() as db:
             found = [self._to_record(row) for row in db.select(**filters)]
         found.sort(key=lambda rec: rec.id)
@@ -221,6 +277,21 @@ class StructureStore:
             return 0
         with self._connect() as db:
             return db.count()
+
+
+GLOBAL_STORE_FILE = "structures.db"
+
+
+def global_store() -> StructureStore:
+    """The user-level structure database shared by all projects.
+
+    It holds reference data (bulk crystals at several levels of theory, gas
+    molecules, literature or in-house slab calculations) that any project can
+    load structures from and take reference energies from.
+    """
+    from gs_gmlip.config import gs_home
+
+    return StructureStore(gs_home() / GLOBAL_STORE_FILE)
 
 
 class Project:
