@@ -1003,6 +1003,22 @@ function fillHostForm(host) {
   $('host-check').textContent = '';
 }
 
+// Cluster presets: predefined values for every entry of the host form.
+function renderHostPresets(presets) {
+  app.hostPresets = presets;
+  fillSelect($('host-preset'), [['', 'Custom (no preset)'],
+    ...presets.map((preset) => [preset.name, `${preset.name}: ${preset.description}${preset.configured ? '' : '  (no SSH alias found)'}`])], '');
+}
+
+function applyHostPreset(name) {
+  const preset = (app.hostPresets || []).find((item) => item.name === name);
+  const notes = $('host-preset-notes');
+  if (!preset) { notes.textContent = ''; return; }
+  fillHostForm({...preset, sync_interval: 15});
+  const missing = preset.configured ? [] : [`No SSH alias for ${preset.name} in ~/.ssh/config: set SSH destination.`];
+  notes.replaceChildren(...[...missing, ...preset.notes].map((line) => Object.assign(document.createElement('div'), {textContent: line})));
+}
+
 function readHostForm() {
   const host = {};
   Object.entries(HOST_FIELDS).forEach(([key, id]) => { host[key] = $(id).value.trim(); });
@@ -1021,6 +1037,7 @@ async function saveHost() {
 function bindHosts() {
   $('hosts-btn').addEventListener('click', () => $('hosts-dialog').showModal());
   $('hosts-close').addEventListener('click', () => $('hosts-dialog').close());
+  $('host-preset').addEventListener('change', (event) => applyHostPreset(event.target.value));
   $('host-save').addEventListener('click', async () => {
     try { toast(`Saved host ${(await saveHost()).name}`); } catch (error) { toast(error.message, 'error'); }
   });
@@ -1398,6 +1415,7 @@ async function start() {
   await loadAllWindows();
   await refreshReferences();
   renderHosts((await api('/api/hosts')).hosts);
+  renderHostPresets((await api('/api/host-presets')).presets);
   await poll();
   setInterval(poll, 1500);
   bindQuit();

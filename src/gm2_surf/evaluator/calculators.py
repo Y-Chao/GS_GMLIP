@@ -296,5 +296,6 @@ register_calculator(
 register_calculator(
     "vasp",
     _vasp,
-    description="VASP through ASE (needs ASE_VASP_COMMAND and VASP_PP_PATH); set xc explicitly",
+    description="VASP through ASE (needs ASE_VASP_COMMAND and VASP_PP_PATH, which the cluster presets of the "
+    "Hosts dialog set from the registered VASP module); set xc explicitly",
 )

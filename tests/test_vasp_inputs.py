@@ -74,6 +74,12 @@ def test_tag_layering_order_on_a_slab(slab):
     assert layered["EDIFF"] == 1e-4 and layered["KSPACING"] == 0.4
     assert layered["ENCUT"] == 450 and layered["ISIF"] == 0
     assert layered["IVDW"] == 13 and layered["LDIPOL"] is True
+    # D4 parameters matched to the functional (pymatgen capitalises string values; VASP ignores case)
+    assert layered["DFTD4_XC"].lower() == "r2scan"
+    pbe = vasp.resolve_incar(slab, preset="relax-PBE", dispersion="D4")["incar"]
+    assert pbe["IVDW"] == 13 and "DFTD4_XC" not in pbe  # VASP derives PBE from GGA
+    d3 = vasp.resolve_incar(slab, preset="relax-r2SCAN", dispersion="D3")["incar"]
+    assert (d3["IVDW"], d3["SDFTD3_XC"].lower()) == (15, "r2scan")
     assert "LVTOT" not in layered
 
     forced_bulk = vasp.resolve_incar(slab, preset="relax-r2SCAN", surface=False)

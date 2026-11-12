@@ -305,6 +305,10 @@ def create_app(
 
         return {"path": _run(lambda: ask(start=payload.get("start") or None))}
 
+    @app.get("/api/host-presets")
+    def host_presets() -> dict[str, Any]:
+        return _run(lambda: session.host_presets())
+
     @app.get("/api/hosts")
     def hosts() -> dict[str, Any]:
         return _run(lambda: session.hosts())

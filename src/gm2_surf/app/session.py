@@ -753,6 +753,12 @@ class Session:
         """Configured remote hosts."""
         return {"hosts": [host.to_dict() for host in load_hosts().values()]}
 
+    def host_presets(self) -> dict[str, Any]:
+        """Predefined settings for known clusters, matched to the user's SSH aliases."""
+        from gm2_surf.jobs.presets import host_presets
+
+        return {"presets": host_presets()}
+
     def save_host(self, **settings: Any) -> dict[str, Any]:
         """Add or replace a remote host."""
         save_host(RemoteHost.from_dict(settings))

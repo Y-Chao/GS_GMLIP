@@ -120,9 +120,20 @@ PRECISION_TAGS: dict[str, dict[str, Any]] = {
     "high": {"ENCUT": 680, "EDIFF": 1e-6, "PREC": "Accurate", "KSPACING": 0.15},
 }
 
-# Dispersion corrections. D4 (IVDW = 13) needs VASP >= 6.2 built with DFT-D4 and
-# takes its damping parameters from the functional set in the INCAR.
-DISPERSION_TAGS: dict[str, dict[str, Any]] = {"none": {}, "D4": {"IVDW": 13}}
+# Dispersion corrections, with the parameter set matched to the functional.
+# D4 (IVDW = 13) needs VASP >= 6.2 built with DFT-D4; D3 here is simple-DFT-D3
+# with Becke-Johnson damping (IVDW = 15, VASP >= 6.6 built with s-dftd3), because
+# the built-in D3 (IVDW = 11/12) has no r2SCAN parameters.
+DISPERSION_TAGS: dict[str, dict[str, Any]] = {
+    "none": {},
+    "D4": {"IVDW": 13},
+    "D3": {"IVDW": 15},
+}
+# Functional name each library needs when VASP cannot derive it from GGA (meta-GGAs).
+DISPERSION_FUNCTIONAL_TAGS: dict[str, dict[str, dict[str, Any]]] = {
+    "D4": {"r2SCAN": {"DFTD4_XC": "r2scan"}},
+    "D3": {"r2SCAN": {"SDFTD3_XC": "r2scan"}, "PBE": {"SDFTD3_XC": "pbe"}},
+}
 
 
 def _to_structure(structure: Interface | Structure | Atoms) -> Structure:
@@ -192,6 +203,9 @@ def _layers(
     if is_slab(structure) if surface is None else surface:
         settings.update(surface_tags(structure, preset.task))
     settings.update(DISPERSION_TAGS[dispersion])
+    settings.update(
+        DISPERSION_FUNCTIONAL_TAGS.get(dispersion, {}).get(preset.functional, {})
+    )
     settings.update(user_incar_settings or {})
     return settings
 
