@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.search.region import BoxRegion, SphereRegion
+from gm2_surf.search.region import BoxRegion, SphereRegion
 
 
 class TestBoxRegion:

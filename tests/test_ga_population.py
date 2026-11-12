@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from ase.calculators.calculator import Calculator
 
-from gs_gmlip.interface.core import Interface
-from gs_gmlip.search.ga.population import Population, _tanh_fitness
+from gm2_surf.interface.core import Interface
+from gm2_surf.search.ga.population import Population, _tanh_fitness
 
 
 class _DummyCalculator(Calculator):

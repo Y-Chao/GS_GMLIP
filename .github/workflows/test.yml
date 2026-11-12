@@ -51,5 +51,5 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff format --check src/gs_gmlip tests
-          ruff check src/gs_gmlip tests
+          ruff format --check src/gm2_surf tests
+          ruff check src/gm2_surf tests

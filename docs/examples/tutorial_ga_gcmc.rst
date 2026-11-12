@@ -2,7 +2,7 @@ Tutorial: GA and GCMC on Cu(111)
 ==================================
 
 This is an interactive Jupyter notebook tutorial demonstrating the
-core workflow of GS_GMLIP.
+core workflow of GM2-Surf.
 
 You can find the notebook at ``examples/tutorial_ga_gcmc_workflow.ipynb``
 in the repository root. Open it with Jupyter to run interactively:

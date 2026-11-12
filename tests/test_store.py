@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from ase.calculators.emt import EMT
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.store import Project, StructureStore
+from gm2_surf.interface import operations as ops
+from gm2_surf.store import Project, StructureStore
 
 
 @pytest.fixture

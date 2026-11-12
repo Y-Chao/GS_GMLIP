@@ -6,14 +6,14 @@ import pytest
 from ase.calculators.emt import EMT
 from ase.calculators.singlepoint import SinglePointCalculator
 
-from gs_gmlip.evaluator import (
+from gm2_surf.evaluator import (
     matgl_models,
     CalculatorEvaluator,
     calculator_entries,
     get_calculator,
     register_calculator,
 )
-from gs_gmlip.interface import operations as ops
+from gm2_surf.interface import operations as ops
 
 
 def test_builtin_entries():

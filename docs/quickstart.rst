@@ -11,7 +11,7 @@ with EMT (for testing — replace with MACE for production).
 .. code-block:: python
 
    from ase.build import fcc111
-   from gs_gmlip.structure import SlabAtoms
+   from gm2_surf.structure import SlabAtoms
 
    slab = fcc111("Cu", size=(3, 3, 3), vacuum=10.0, periodic=True)
    sa = SlabAtoms.from_atoms(slab)
@@ -23,8 +23,8 @@ with EMT (for testing — replace with MACE for production).
 
 .. code-block:: python
 
-   from gs_gmlip.structure import BoxRegion, MolecularBlock
-   from gs_gmlip.structure.composition import water_block, hydrogen_block
+   from gm2_surf.structure import BoxRegion, MolecularBlock
+   from gm2_surf.structure.composition import water_block, hydrogen_block
 
    z_top = sa.positions[:, 2].max()
    region = BoxRegion.from_atoms(sa, z_min=z_top + 1.5, z_max=z_top + 5.0)
@@ -37,7 +37,7 @@ with EMT (for testing — replace with MACE for production).
 .. code-block:: python
 
    from ase.calculators.emt import EMT
-   from gs_gmlip.evaluate.mlip.ase_calc import ASECalculatorEvaluator
+   from gm2_surf.evaluate.mlip.ase_calc import ASECalculatorEvaluator
 
    evaluator = ASECalculatorEvaluator(calculator=EMT())
 
@@ -46,7 +46,7 @@ with EMT (for testing — replace with MACE for production).
 
 .. code-block:: python
 
-   from gs_gmlip.search.ga import GARunner
+   from gm2_surf.search.ga import GARunner
 
    runner = GARunner(
        slab=sa,
@@ -64,7 +64,7 @@ with EMT (for testing — replace with MACE for production).
 
 .. code-block:: python
 
-   from gs_gmlip.analysis import StructureAnalyzer
+   from gm2_surf.analysis import StructureAnalyzer
 
    energies = [r.get_potential_energy() for r in results]
    analyzer = StructureAnalyzer(results, energies)

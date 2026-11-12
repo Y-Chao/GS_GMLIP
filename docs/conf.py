@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
-project = "GS_GMLIP"
+project = "GM2-Surf"
 copyright = "2026, Chao Yang"
 author = "Chao Yang"
 release = "1.0.0"
@@ -66,6 +66,8 @@ html_theme_options = {
     "collapse_navigation": False,
 }
 html_static_path = ["_static"]
+html_logo = "../assets/gm2-surf_icon.svg"
+html_favicon = "../assets/png/gm2-surf_icon_64.png"
 
 # -- nbsphinx configuration -------------------------------------------------
 nbsphinx_execute = "never"

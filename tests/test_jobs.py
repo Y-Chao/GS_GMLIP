@@ -6,11 +6,11 @@ import time
 
 import pytest
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import TASKS, JobSpec, LocalExecutor, run_task
-from gs_gmlip.jobs.spec import list_jobs, read_spec, read_status, write_spec
-from gs_gmlip.jobs.worker import run_job_dir
-from gs_gmlip.store import Project
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import TASKS, JobSpec, LocalExecutor, run_task
+from gm2_surf.jobs.spec import list_jobs, read_spec, read_status, write_spec
+from gm2_surf.jobs.worker import run_job_dir
+from gm2_surf.store import Project
 
 
 @pytest.fixture
@@ -224,7 +224,7 @@ def test_local_executor_cancel(project, input_id):
 def bulk_id(project):
     from pymatgen.io.ase import AseAtomsAdaptor
 
-    from gs_gmlip.interface.core import Interface
+    from gm2_surf.interface.core import Interface
 
     bulk = ops.make_bulk("Cu", "fcc", 3.70)
     bulk.make_supercell([2, 2, 2])

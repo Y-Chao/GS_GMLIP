@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.evaluator.analytic_pes import AnalyticPES
+from gm2_surf.evaluator.analytic_pes import AnalyticPES
 
 PES_NAMES = [
     "muller_brown",

@@ -1,10 +1,10 @@
-"""Tests for gs_gmlip.utils."""
+"""Tests for gm2_surf.utils."""
 
 from __future__ import annotations
 
 from unittest.mock import patch
 
-from gs_gmlip.utils import (
+from gm2_surf.utils import (
     DEFAULT_PRINT_SETTINGS,
     PrintConfig,
     Printer,
@@ -106,14 +106,14 @@ class TestPrinter:
 
     def test_writer_prints_at_standard(self, capsys):
         p = Printer(verbosity=Printer.STANDARD)
-        with patch("gs_gmlip.utils.Console") as MockConsole:
+        with patch("gm2_surf.utils.Console") as MockConsole:
             instance = MockConsole.return_value
             p.writer("hello", verbosity=Printer.STANDARD)
             instance.print.assert_called_once()
 
     def test_writer_suppressed_below_verbosity(self):
         p = Printer(verbosity=Printer.DEBUG)
-        with patch("gs_gmlip.utils.Console") as MockConsole:
+        with patch("gm2_surf.utils.Console") as MockConsole:
             instance = MockConsole.return_value
             p.writer("hidden", verbosity=Printer.STANDARD)
             instance.print.assert_not_called()
@@ -132,21 +132,21 @@ class TestPrinter:
 
     def test_print_header_calls_rule(self):
         p = Printer()
-        with patch("gs_gmlip.utils.Console") as MockConsole:
+        with patch("gm2_surf.utils.Console") as MockConsole:
             instance = MockConsole.return_value
             p.print_header("Section")
             instance.rule.assert_called_once_with("Section")
 
     def test_print_table_renders(self):
         p = Printer()
-        with patch("gs_gmlip.utils.Console") as MockConsole:
+        with patch("gm2_surf.utils.Console") as MockConsole:
             instance = MockConsole.return_value
             p.print_table(["A", "B"], [("1", "2"), ("3", "4")])
             instance.print.assert_called_once()
 
     def test_print_panel_renders(self):
         p = Printer()
-        with patch("gs_gmlip.utils.Console") as MockConsole:
+        with patch("gm2_surf.utils.Console") as MockConsole:
             instance = MockConsole.return_value
             p.print_panel("content", panel_title="Title")
             instance.print.assert_called_once()

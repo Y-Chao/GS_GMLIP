@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from pymatgen.io.vasp.sets import MatPESStaticSet, MPMDSet, MPRelaxSet, MPScanRelaxSet
 
-from gs_gmlip.evaluator import vasp
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import JobSpec, run_task
-from gs_gmlip.store import Project
+from gm2_surf.evaluator import vasp
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import JobSpec, run_task
+from gm2_surf.store import Project
 
 
 @pytest.fixture(scope="module")

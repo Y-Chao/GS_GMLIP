@@ -8,14 +8,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from gs_gmlip.evaluator import (
+from gm2_surf.evaluator import (
     CalculatorEvaluator,
     get_calculator,
     level_of_theory,
     resolve_model_path,
 )
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import (
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import (
     TASKS,
     JobSpec,
     LocalExecutor,
@@ -23,9 +23,9 @@ from gs_gmlip.jobs import (
     register_task,
     run_task,
 )
-from gs_gmlip.jobs.tasks import MODEL_TYPES, TASK_CATEGORIES
-from gs_gmlip.search.minima_hopping import MinimaHoppingRunner
-from gs_gmlip.store import Project
+from gm2_surf.jobs.tasks import MODEL_TYPES, TASK_CATEGORIES
+from gm2_surf.search.minima_hopping import MinimaHoppingRunner
+from gm2_surf.store import Project
 
 
 @pytest.fixture

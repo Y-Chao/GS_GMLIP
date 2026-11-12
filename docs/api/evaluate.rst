@@ -6,27 +6,27 @@ Energy and force back ends: the evaluator base class, the calculator registry, V
 Evaluator base class
 --------------------
 
-.. automodule:: gs_gmlip.evaluator.base
+.. automodule:: gm2_surf.evaluator.base
    :members:
    :show-inheritance:
 
 Calculator registry
 -------------------
 
-.. automodule:: gs_gmlip.evaluator.calculators
+.. automodule:: gm2_surf.evaluator.calculators
    :members:
    :show-inheritance:
 
 VASP inputs
 -----------
 
-.. automodule:: gs_gmlip.evaluator.vasp
+.. automodule:: gm2_surf.evaluator.vasp
    :members:
    :show-inheritance:
 
 Analytic potential energy surfaces
 ----------------------------------
 
-.. automodule:: gs_gmlip.evaluator.analytic_pes
+.. automodule:: gm2_surf.evaluator.analytic_pes
    :members:
    :show-inheritance:

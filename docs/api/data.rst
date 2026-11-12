@@ -6,27 +6,27 @@ The provenance-aware structure database, derived energies, and the importer for 
 Structure store
 ---------------
 
-.. automodule:: gs_gmlip.store
+.. automodule:: gm2_surf.store
    :members:
    :show-inheritance:
 
 Derived energies
 ----------------
 
-.. automodule:: gs_gmlip.energetics
+.. automodule:: gm2_surf.energetics
    :members:
    :show-inheritance:
 
 Importing external databases
 ----------------------------
 
-.. automodule:: gs_gmlip.importers
+.. automodule:: gm2_surf.importers
    :members:
    :show-inheritance:
 
 User-level configuration
 ------------------------
 
-.. automodule:: gs_gmlip.config
+.. automodule:: gm2_surf.config
    :members:
    :show-inheritance:

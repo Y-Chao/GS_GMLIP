@@ -7,17 +7,17 @@ import time
 
 import pytest
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import TASKS, JobSpec, LocalExecutor, register_searcher, run_task
-from gs_gmlip.plugins import load_plugins
-from gs_gmlip.search.base import BaseSearcher
-from gs_gmlip.store import Project
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import TASKS, JobSpec, LocalExecutor, register_searcher, run_task
+from gm2_surf.plugins import load_plugins
+from gm2_surf.search.base import BaseSearcher
+from gm2_surf.store import Project
 
 PLUGIN = textwrap.dedent(
     """
-    from gs_gmlip.evaluator import register_calculator
-    from gs_gmlip.jobs import register_searcher
-    from gs_gmlip.search.base import BaseSearcher
+    from gm2_surf.evaluator import register_calculator
+    from gm2_surf.jobs import register_searcher
+    from gm2_surf.search.base import BaseSearcher
 
 
     class Rattle(BaseSearcher):

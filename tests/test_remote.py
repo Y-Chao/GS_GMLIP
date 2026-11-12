@@ -8,9 +8,9 @@ import time
 
 import pytest
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import JobSpec
-from gs_gmlip.jobs.remote import (
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import JobSpec
+from gm2_surf.jobs.remote import (
     SCHEDULERS,
     LocalTransport,
     ProjectExecutor,
@@ -22,9 +22,9 @@ from gs_gmlip.jobs.remote import (
     remove_host,
     save_host,
 )
-from gs_gmlip.store import Project
+from gm2_surf.store import Project
 
-WORKER = f"{sys.executable} -m gs_gmlip.jobs.worker"
+WORKER = f"{sys.executable} -m gm2_surf.jobs.worker"
 
 
 @pytest.fixture
@@ -219,9 +219,9 @@ def test_pbs_script():
         assert directive in lines
     assert lines.index("module load cuda") > lines.index('cd "/scratch/u/j" || exit 1')
     assert lines[-1].startswith(
-        'exec gs_gmlip run-job "/scratch/u/j/jobs/relax-20261112-101010-abcdef"'
+        'exec gm2_surf run-job "/scratch/u/j/jobs/relax-20261112-101010-abcdef"'
     )
-    assert host.root == "$HOME/gs_gmlip_jobs"
+    assert host.root == "$HOME/gm2_surf_jobs"
     assert SCHEDULERS["pbs"].submit.format(script="run.sh") == "qsub run.sh"
 
 
@@ -258,8 +258,8 @@ def test_app_submits_to_host_and_lists_where_jobs_run(tmp_path, host):
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from gs_gmlip.app.server import create_app
-    from gs_gmlip.app.session import Session
+    from gm2_surf.app.server import create_app
+    from gm2_surf.app.session import Session
 
     project = Project(tmp_path / "proj")
     session = Session(project, ProjectExecutor(project, LocalTransport()))

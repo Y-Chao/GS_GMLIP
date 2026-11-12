@@ -1,12 +1,12 @@
 # Interface Class — Design Spec
 
 **Date:** 2026-05-29
-**Module:** `src/gs_gmlip/interface/`
+**Module:** `src/gm2_surf/interface/`
 **Status:** Approved design, ready for implementation plan
 
 ## Goal
 
-Complete the `Interface` class — the central structure object for `gs_gmlip`.
+Complete the `Interface` class — the central structure object for `gm2_surf`.
 It represents a catalyst **substrate** (clean slab) plus an **interface** (slab +
 adsorbates/clusters), tracks fixed/relaxed regions, classifies adsorbates vs
 clusters, performs pymatgen-backed surface analysis, and exposes a
@@ -41,10 +41,10 @@ pymatgen dependency). ASE↔pymatgen conversion via
 
 ### Package layout
 `interface.py` becomes a package. Public import path is unchanged
-(`from gs_gmlip.interface import Interface`).
+(`from gm2_surf.interface import Interface`).
 
 ```
-src/gs_gmlip/interface/
+src/gm2_surf/interface/
 ├── __init__.py      # re-exports Interface
 ├── core.py          # Interface class: state, __init__, caching, mutation, I/O, generator hooks
 ├── analysis.py      # pure functions: detect_layers, build_neighbor_graph, classify_appended,

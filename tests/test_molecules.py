@@ -6,18 +6,18 @@ import numpy as np
 import pytest
 from ase.build import molecule
 
-from gs_gmlip.config import gs_home, recent_projects, remember_project
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.interface.intermediates import (
+from gm2_surf.config import gm2_home, recent_projects, remember_project
+from gm2_surf.interface import operations as ops
+from gm2_surf.interface.intermediates import (
     INTERMEDIATE_NAMES,
     INTERMEDIATES,
     REACTIONS,
     build_intermediate,
     get_intermediate,
 )
-from gs_gmlip.interface.molecules import MoleculeLibrary
-from gs_gmlip.jobs import JobSpec, run_task
-from gs_gmlip.store import Project
+from gm2_surf.interface.molecules import MoleculeLibrary
+from gm2_surf.jobs import JobSpec, run_task
+from gm2_surf.store import Project
 
 EXPECTED_FORMULAS = {
     "H": "H1", "OH": "H1 O1", "OOH": "H1 O2", "COOH": "H1 C1 O2", "OCHO": "H1 C1 O2", "CO": "C1 O1",
@@ -194,6 +194,23 @@ def test_recent_projects_are_remembered_most_recent_first(tmp_path):
     assert recent_projects() == [str(first.resolve()), str(second.resolve())]
     second.rmdir()
     assert recent_projects() == [str(first.resolve())]  # vanished folders are dropped
-    assert gs_home().name.startswith(
-        "gs_home"
+    assert gm2_home().name.startswith(
+        "gm2_home"
     )  # the autouse fixture isolates the user directory
+
+
+def test_home_falls_back_to_the_former_package_name(tmp_path, monkeypatch):
+    monkeypatch.delenv("GM2_SURF_HOME")
+    monkeypatch.setenv("GS_GMLIP_HOME", str(tmp_path / "configured"))
+    assert (
+        gm2_home() == tmp_path / "configured"
+    )  # the former variable is still honoured
+
+    monkeypatch.delenv("GS_GMLIP_HOME")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    legacy = tmp_path / ".gs_gmlip"
+    legacy.mkdir()
+    (legacy / "hosts.json").write_text("{}")
+    home = gm2_home()
+    assert home == tmp_path / ".gm2_surf" and (home / "hosts.json").read_text() == "{}"
+    assert not legacy.exists()  # moved once, not copied

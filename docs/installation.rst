@@ -16,8 +16,8 @@ Install from source
 
 .. code-block:: bash
 
-   git clone https://github.com/your-org/GS_GMLIP.git
-   cd GS_GMLIP
+   git clone https://github.com/your-org/GM2-Surf.git
+   cd GM2-Surf
    pip install -e .
 
 With MLIP support (MACE)
@@ -46,5 +46,5 @@ Verify installation
 
 .. code-block:: python
 
-   import gs_gmlip
-   print(gs_gmlip.__version__)  # 1.0.0
+   import gm2_surf
+   print(gm2_surf.__version__)  # 1.0.0

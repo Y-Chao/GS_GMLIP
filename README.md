@@ -1,11 +1,13 @@
-# GS_GMLIP
+<p align="center"><img src="assets/gm2-surf_icon.svg" alt="GM2-Surf" width="180"></p>
 
-**Global Searching by Machine Learning Interatomic Potential** — a general package for global searching of stable/metastable structures on catalyst surfaces under working conditions, accelerated by MLIP (MACE, etc.).
+# GM2-Surf
+
+**Global Minimum search with Global Machine-Learning interatomic potentials, for Surfaces** — a general package for global searching of stable/metastable structures on catalyst surfaces under working conditions, accelerated by MLIP (MACE, etc.).
 
 ## Architecture
 
 ```
-gs_gmlip/
+gm2_surf/
 ├── structure/          # Atoms, regions, bonds, molecular blocks
 ├── evaluate/           # MLIP (MACE, generic ASE) & DFT (VASP stub) calculators
 │   ├── mlip/           #   MACEEvaluator, ASECalculatorEvaluator
@@ -51,15 +53,15 @@ pip install -e ".[all]"
 
 ### CLI
 ```bash
-gs_gmlip --config config.yaml
+gm2_surf --config config.yaml
 ```
 
 ### Python API
 ```python
 from ase.build import fcc111
-from gs_gmlip.evaluate.mlip.mace_eval import MACEEvaluator
-from gs_gmlip.search.ga.runner import GARunner
-from gs_gmlip.structure.composition import water_block, hydrogen_block
+from gm2_surf.evaluate.mlip.mace_eval import MACEEvaluator
+from gm2_surf.search.ga.runner import GARunner
+from gm2_surf.structure.composition import water_block, hydrogen_block
 
 slab = fcc111("Cu", size=(3, 3, 4), vacuum=15.0, periodic=True)
 evaluator = MACEEvaluator(model="small")
@@ -101,11 +103,11 @@ Each example includes: `prepare_slab.py`, `run_ga.py`, `run_gcmc.py`, `analyze.p
 
 ## Package Structure
 
-- `gs_gmlip/structure/` — `SlabAtoms` (extends ASE Atoms), `BoxRegion`/`SphereRegion`, `BondData`, `MolecularBlock`, `CompositionConstraint`
-- `gs_gmlip/evaluate/` — `BaseEvaluator` ABC → `MACEEvaluator`, `ASECalculatorEvaluator`, `VASPEvaluator`
-- `gs_gmlip/search/` — `BaseSearcher` ABC → `GARunner`, `GCMCRunner`, `GOFEERunner`, `SSWRunner`, `MetadynamicsRunner`
-- `gs_gmlip/analysis/` — `StructureAnalyzer` (fingerprint clustering), `TrajectoryAnalyzer` (convergence), visualization export
-- `gs_gmlip/data/` — `CandidateDatabase` (ASE SQLite), `WorkflowManager` (checkpoints), I/O utilities
+- `gm2_surf/structure/` — `SlabAtoms` (extends ASE Atoms), `BoxRegion`/`SphereRegion`, `BondData`, `MolecularBlock`, `CompositionConstraint`
+- `gm2_surf/evaluate/` — `BaseEvaluator` ABC → `MACEEvaluator`, `ASECalculatorEvaluator`, `VASPEvaluator`
+- `gm2_surf/search/` — `BaseSearcher` ABC → `GARunner`, `GCMCRunner`, `GOFEERunner`, `SSWRunner`, `MetadynamicsRunner`
+- `gm2_surf/analysis/` — `StructureAnalyzer` (fingerprint clustering), `TrajectoryAnalyzer` (convergence), visualization export
+- `gm2_surf/data/` — `CandidateDatabase` (ASE SQLite), `WorkflowManager` (checkpoints), I/O utilities
 
 ## Dependencies
 

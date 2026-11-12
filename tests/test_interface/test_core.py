@@ -6,9 +6,10 @@ import pytest
 from ase import Atoms
 from ase.build import bulk
 from ase.constraints import FixAtoms
+from ase.io import read
 from pymatgen.core import Structure
 
-from gs_gmlip.interface import Interface
+from gm2_surf.interface import Interface
 
 
 def _slab():
@@ -423,13 +424,13 @@ def test_write_read_preserves_relax_and_custom_grouping(tmp_path):
     assert loaded.adsList == [[8], [9]]
     assert loaded.clusterList == []
     # leftover metadata key removed from reconstructed interface.info
-    assert "gs_gmlip_interface" not in loaded.interface.info
+    assert "gm2_surf_interface" not in loaded.interface.info
 
 
 def test_read_plain_file_without_metadata(tmp_path):
     from ase.io import write as _w
 
-    # a plain Atoms file with NO gs_gmlip metadata -> everything is substrate
+    # a plain Atoms file with NO gm2_surf metadata -> everything is substrate
     plain = _slab()
     p = tmp_path / "plain.traj"
     _w(str(p), plain)
@@ -607,3 +608,24 @@ def test_pt111_slab_built_with_ase_has_six_layers(pt111_slab):
     intf = Interface(substrate=pt111_slab)
     assert intf.get_substrate_layers() == 6
     assert len(intf.substrate) == 96
+
+
+def test_read_accepts_metadata_written_under_the_former_package_name(tmp_path):
+    slab = _slab()
+    full = slab + Atoms("CO", positions=[[2.0, 2.0, 4.0], [2.0, 2.0, 5.13]])
+    intf = Interface(
+        substrate=slab,
+        interface=full,
+        fixlist=[0, 1],
+        adsList=[[8], [9]],
+        clusterList=[],
+    )
+    path = tmp_path / "new.traj"
+    intf.write(str(path))
+    atoms = read(str(path))
+    atoms.info["gs_gmlip_interface"] = atoms.info.pop("gm2_surf_interface")
+    old = tmp_path / "old.traj"
+    atoms.write(str(old))
+    loaded = Interface.read(str(old))
+    assert loaded.fix == [0, 1] and loaded.adsList == [[8], [9]]
+    assert "gs_gmlip_interface" not in loaded.interface.info
