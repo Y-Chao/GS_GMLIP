@@ -24,6 +24,9 @@ const app = {
   jobsKey: '',
   nStructures: -1,
   forms: {calc: () => ({}), task: () => ({})},
+  jobStates: new Map(), // job id -> last seen state
+  following: new Map(), // job id -> {ws, last} for jobs shown live in a window
+  waiting: false,
 };
 
 const EMPTY_TEXT = {
@@ -288,6 +291,7 @@ function renderPanel() {
     $('lineage').textContent = state.lineage.length ? `Lineage: ${state.lineage.map((id) => `#${id}`).join(' → ')}` : 'Lineage: none';
   }
   renderItems();
+  if (app.taskKind !== win.kind) { app.taskKind = win.kind; renderTaskChoices(); }
   updateStatus();
   updateTools();
   markCurrentRow();
@@ -725,8 +729,21 @@ function renderCalculator() {
   app.forms.calc = buildForm($('calc-params'), entry.defaults, entry.choices);
 }
 
+// Tasks offered depend on the active window's model type and the chosen category.
+function renderTaskChoices() {
+  const win = current();
+  const kind = win ? win.kind : 'surface';
+  const usable = app.meta.tasks.filter((task) => task.applies_to.includes(kind));
+  const categories = app.meta.task_categories.filter((name) => usable.some((task) => task.category === name));
+  fillSelect($('task-category'), categories, $('task-category').value || 'optimization');
+  const inCategory = usable.filter((task) => task.category === $('task-category').value);
+  fillSelect($('task-kind'), inCategory.map((task) => task.kind));
+  renderTask();
+}
+
 function renderTask() {
   const task = app.meta.tasks.find((item) => item.kind === $('task-kind').value);
+  if (!task) { $('task-note').textContent = 'No task of this category applies to this window.'; $('task-params').replaceChildren(); return; }
   $('task-note').textContent = task.description;
   const choices = {optimizer: app.meta.optimizers};
   const isVasp = task.kind === 'vasp_inputs';
@@ -752,11 +769,12 @@ function renderJobs(jobs) {
     card.className = 'job';
     card.innerHTML = `
       <div class="head"><span class="badge ${job.state}">${job.state}</span><span class="id"></span><span class="spacer"></span>
-        <span class="muted">${job.calculator}, input #${job.structure_id}</span></div>
+        <span class="muted where"></span></div>
       <div class="bar"><div style="width:${Math.round(job.progress * 100)}%"></div></div>
       <div class="msg"></div>
       <div class="row"><span class="muted">${job.n_structures} structures</span></div>`;
     card.querySelector('.id').textContent = job.job_id;
+    card.querySelector('.where').textContent = `${job.calculator}, input #${job.structure_id}, ${job.host || 'local'}`;
     card.querySelector('.msg').textContent = job.message || 'waiting';
     const row = card.querySelector('.row');
     const button = (text, handler, cls = '') => {
@@ -803,11 +821,272 @@ function bindRun() {
       toast(`Invalid parameters: ${error.message}`, 'error');
       return;
     }
+    const ws = app.active;
+    const host = $('job-host').value;
     await act(() => post('/api/jobs', {kind: $('task-kind').value, calculator: $('calc-name').value,
-      calculator_params: calculatorParams, params, label: $('job-label').value}), (_state, result) => toast(`Started ${result.job_id}`));
+      calculator_params: calculatorParams, params, label: $('job-label').value, host}), (_state, result) => {
+      toast(host ? `Submitted ${result.job_id} to ${host}` : `Started ${result.job_id}`);
+      if ($('job-follow').checked) app.following.set(result.job_id, {ws, last: null});
+    });
     poll();
   });
   $('log-close').addEventListener('click', () => $('log-dialog').close());
+  bindHosts();
+  bindWorkflow();
+  $('task-category').addEventListener('change', renderTaskChoices);
+  $('jobs-wait').addEventListener('click', waitForAll);
+}
+
+// ---------------------------------------------------------------- workflows
+
+// "temperature = 300, 600" per line -> {temperature: [300, 600]}; values are JSON where possible.
+function parseSweep(text) {
+  const sweep = {};
+  text.split('\n').map((line) => line.trim()).filter(Boolean).forEach((line) => {
+    const cut = line.indexOf('=');
+    if (cut < 1) throw new Error(`sweep line needs "parameter = values": ${line}`);
+    const values = line.slice(cut + 1).split(',').map((item) => item.trim()).filter(Boolean).map((item) => {
+      try { return JSON.parse(item); } catch { return item; }
+    });
+    if (!values.length) throw new Error(`sweep over ${line.slice(0, cut).trim()} has no values`);
+    sweep[line.slice(0, cut).trim()] = values;
+  });
+  return sweep;
+}
+
+function renderWorkflowSteps() {
+  const box = $('wf-steps');
+  box.replaceChildren();
+  app.workflowSteps.forEach((step, index) => {
+    const row = document.createElement('div');
+    row.className = 'wf-step';
+    const text = document.createElement('span');
+    text.className = 'grow';
+    const sweep = Object.entries(step.sweep).map(([name, values]) => `${name} × ${values.length}`).join(', ');
+    text.textContent = `${index + 1}. ${step.kind} · ${step.calculator} · ${step.host || 'local'}`
+      + `${sweep ? ` · sweep ${sweep}` : ''} → pass on ${step.take === 'best' ? `best ${step.n}` : step.take}`;
+    const remove = document.createElement('button');
+    remove.textContent = '×';
+    remove.title = 'Remove this step';
+    remove.addEventListener('click', () => { app.workflowSteps.splice(index, 1); renderWorkflowSteps(); });
+    row.append(text, remove);
+    box.append(row);
+  });
+  $('wf-run').disabled = !app.workflowSteps.length;
+}
+
+function bindWorkflow() {
+  app.workflowSteps = [];
+  renderWorkflowSteps();
+  $('wf-add').addEventListener('click', () => {
+    try {
+      app.workflowSteps.push({kind: $('task-kind').value, calculator: $('calc-name').value, calculator_params: app.forms.calc(),
+        params: app.forms.task(), host: $('job-host').value, take: $('wf-take').value, n: Number($('wf-n').value) || 1,
+        sweep: parseSweep($('wf-sweep').value)});
+    } catch (error) {
+      toast(`Invalid step: ${error.message}`, 'error');
+      return;
+    }
+    $('wf-sweep').value = '';
+    renderWorkflowSteps();
+  });
+  $('wf-clear').addEventListener('click', () => { app.workflowSteps = []; renderWorkflowSteps(); });
+  $('wf-run').addEventListener('click', async () => {
+    const body = {name: $('wf-name').value.trim() || 'workflow', steps: app.workflowSteps, max_parallel: Number($('wf-parallel').value) || 4};
+    if ($('wf-input').value === 'rows') {
+      if (app.records.scope === 'global') { toast('Batch runs start from the project database; switch the Data tab to Project', 'error'); return; }
+      body.inputs = app.records.rows.map((row) => row.id);
+      if (!body.inputs.length) { toast('The Data tab lists no rows; open it and set its filters first', 'error'); return; }
+      if (!window.confirm(`Start "${body.name}" on ${body.inputs.length} structures?`)) return;
+    }
+    await act(() => post('/api/workflows', body), (_state, result) => {
+      toast(`Started workflow ${result.workflow_id}`);
+      app.workflowsActive = true;
+      activateTab('flow');
+    });
+    poll();
+  });
+}
+
+async function refreshWorkflows() {
+  let workflows;
+  try {
+    workflows = (await api('/api/workflows')).workflows;
+  } catch {
+    return;
+  }
+  app.workflowsActive = workflows.some((workflow) => workflow.active);
+  const box = $('workflows');
+  if (!workflows.length) return;
+  box.classList.remove('muted');
+  box.replaceChildren();
+  workflows.forEach((workflow) => {
+    const card = document.createElement('div');
+    card.className = 'wf-card';
+    const head = document.createElement('div');
+    head.className = 'row';
+    const badge = document.createElement('span');
+    badge.className = `badge ${workflow.state}`;
+    badge.textContent = workflow.state;
+    const name = document.createElement('strong');
+    name.className = 'grow';
+    name.textContent = `${workflow.name}  (${workflow.workflow_id})`;
+    head.append(badge, name);
+    if (workflow.active) {
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      cancel.className = 'danger';
+      cancel.addEventListener('click', () => api(`/api/workflows/${workflow.workflow_id}/cancel`, {method: 'POST', body: {}}).then(refreshWorkflows).then(poll));
+      head.append(cancel);
+    }
+    const list = document.createElement('ol');
+    workflow.steps.forEach((step, index) => {
+      const item = document.createElement('li');
+      const counts = Object.entries(step.counts).map(([state, count]) => `${count} ${state}`).join(', ');
+      const sweep = Object.entries(step.sweep).map(([key, count]) => `${key} × ${count}`).join(', ');
+      item.textContent = `${step.kind} · ${step.calculator} · ${step.host || 'local'}${sweep ? ` · sweep ${sweep}` : ''}`
+        + ` — ${step.inputs === null ? 'not started' : `${step.inputs} input${step.inputs === 1 ? '' : 's'}; ${counts || 'no jobs yet'}`}`
+        + ` → ${step.take}`;
+      if (workflow.active && index === workflow.step) item.style.fontWeight = '600';
+      list.append(item);
+    });
+    card.append(head, list);
+    const note = [workflow.message, ...workflow.errors].filter(Boolean).join(' · ');
+    if (note) {
+      const message = document.createElement('div');
+      message.className = 'muted';
+      message.textContent = note;
+      card.append(message);
+    }
+    box.append(card);
+  });
+}
+
+// ---------------------------------------------------------------- remote hosts
+
+const HOST_FIELDS = {name: 'host-name', host: 'host-host', scheduler: 'host-scheduler', remote_root: 'host-root',
+  queue: 'host-queue', account: 'host-account', resources: 'host-resources', walltime: 'host-walltime',
+  sync_interval: 'host-sync', command: 'host-command'};
+const HOST_LISTS = {setup: 'host-setup', directives: 'host-directives'};
+
+function renderHosts(hosts) {
+  app.hosts = hosts;
+  const select = $('job-host');
+  const chosen = select.value;
+  select.replaceChildren(new Option('This machine', ''), ...hosts.map((host) => new Option(`${host.name} (${host.scheduler}${host.queue ? `, ${host.queue}` : ''})`, host.name)));
+  if (hosts.some((host) => host.name === chosen)) select.value = chosen;
+  const list = $('hosts-list');
+  list.replaceChildren();
+  hosts.forEach((host) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.className = 'grow';
+    name.textContent = `${host.name}: ${host.host}, ${host.scheduler}, ${host.remote_root}`;
+    const edit = document.createElement('button');
+    edit.textContent = 'Edit';
+    edit.addEventListener('click', () => fillHostForm(host));
+    const remove = document.createElement('button');
+    remove.textContent = 'Remove';
+    remove.className = 'danger';
+    remove.addEventListener('click', async () => {
+      try { renderHosts((await api(`/api/hosts/${encodeURIComponent(host.name)}`, {method: 'DELETE'})).hosts); } catch (error) { toast(error.message, 'error'); }
+    });
+    row.append(name, edit, remove);
+    list.append(row);
+  });
+}
+
+function fillHostForm(host) {
+  Object.entries(HOST_FIELDS).forEach(([key, id]) => { $(id).value = host[key] ?? ''; });
+  Object.entries(HOST_LISTS).forEach(([key, id]) => { $(id).value = (host[key] || []).join('\n'); });
+  $('host-check').textContent = '';
+}
+
+function readHostForm() {
+  const host = {};
+  Object.entries(HOST_FIELDS).forEach(([key, id]) => { host[key] = $(id).value.trim(); });
+  Object.entries(HOST_LISTS).forEach(([key, id]) => { host[key] = $(id).value.split('\n').map((line) => line.trim()).filter(Boolean); });
+  host.sync_interval = Number(host.sync_interval) || 15;
+  return host;
+}
+
+async function saveHost() {
+  const host = readHostForm();
+  renderHosts((await api('/api/hosts', {method: 'POST', body: host})).hosts);
+  $('job-host').value = host.name;
+  return host;
+}
+
+function bindHosts() {
+  $('hosts-btn').addEventListener('click', () => $('hosts-dialog').showModal());
+  $('hosts-close').addEventListener('click', () => $('hosts-dialog').close());
+  $('host-save').addEventListener('click', async () => {
+    try { toast(`Saved host ${(await saveHost()).name}`); } catch (error) { toast(error.message, 'error'); }
+  });
+  $('host-test').addEventListener('click', async () => {
+    const note = $('host-check');
+    try {
+      const host = await saveHost();
+      note.textContent = `Checking ${host.name}…`;
+      const result = await api(`/api/hosts/${encodeURIComponent(host.name)}/check`, {method: 'POST', body: {}});
+      note.textContent = result.checks.map((check) => `${check.ok ? 'ok' : 'FAILED'}: ${check.detail}`).join(' · ');
+    } catch (error) {
+      note.textContent = error.message;
+    }
+  });
+}
+
+// Job callbacks: report every job that finishes, and show new structures of
+// followed jobs in the window they were started from.
+async function onJobUpdates(jobs) {
+  for (const job of jobs) {
+    const before = app.jobStates.get(job.job_id);
+    app.jobStates.set(job.job_id, job.state);
+    if (before && before !== job.state && !job.active) {
+      toast(`${job.job_id} ${job.state}: ${job.message || ''}`, job.state === 'done' ? 'info' : 'error');
+    }
+    const follow = app.following.get(job.job_id);
+    if (follow && job.last_structure_id !== null && job.last_structure_id !== follow.last) {
+      follow.last = job.last_structure_id;
+      if (app.windows.has(follow.ws)) {
+        try {
+          applyState(await api(withWs(`/api/records/${job.last_structure_id}/load`, follow.ws), {method: 'POST', body: {}}));
+        } catch { /* the row may have been removed; the next update retries */ }
+      }
+    }
+    if (follow && !job.active) app.following.delete(job.job_id);
+  }
+}
+
+// Optional blocking wait: long-poll until no job is active, then report once.
+async function waitForAll() {
+  if (app.waiting) { app.waiting = false; return; }
+  app.waiting = true;
+  $('jobs-wait').textContent = 'Stop waiting';
+  const note = $('jobs-waiting');
+  note.hidden = false;
+  let jobs = [];
+  while (app.waiting) {
+    try {
+      jobs = (await api('/api/jobs/wait?timeout=20')).jobs;
+    } catch (error) {
+      toast(error.message, 'error');
+      break;
+    }
+    const active = jobs.filter((job) => job.active);
+    note.textContent = `Waiting for ${active.length} running job${active.length === 1 ? '' : 's'}…`;
+    await poll();
+    if (!active.length) break;
+  }
+  if (app.waiting) {
+    const failed = jobs.filter((job) => job.state === 'failed').length;
+    toast(`All jobs finished: ${jobs.filter((job) => job.state === 'done').length} done, ${failed} failed`, failed ? 'error' : 'info');
+    activateTab('data');
+  }
+  app.waiting = false;
+  note.hidden = true;
+  $('jobs-wait').textContent = 'Wait for all';
 }
 
 // ---------------------------------------------------------------- data tab
@@ -913,23 +1192,30 @@ async function refreshGraph() {
 
 // ---------------------------------------------------------------- project
 
+const NEW_PROJECT = '\u0000new';
+
 function showProjectDialog() {
   $('project-path').value = app.meta.project;
-  const recent = $('project-recent');
-  recent.replaceChildren();
-  if (app.meta.recent_projects.length) {
-    const title = document.createElement('div');
-    title.className = 'muted';
-    title.textContent = 'Recent projects';
-    recent.append(title);
-    app.meta.recent_projects.forEach((path) => {
-      const button = document.createElement('button');
-      button.textContent = path;
-      button.addEventListener('click', () => openProject(path));
-      recent.append(button);
-    });
-  }
+  const paths = [app.meta.project, ...app.meta.recent_projects.filter((path) => path !== app.meta.project)];
+  const options = paths.map((path, index) => new Option(index ? path : `${path}  (current)`, path));
+  if (app.meta.folder_picker) options.push(new Option('New project: choose a folder on this Mac…', NEW_PROJECT));
+  $('project-select').replaceChildren(...options);
   $('project-dialog').showModal();
+}
+
+// The folder dialog is native and runs on the machine that serves the app.
+async function chooseProjectFolder() {
+  try {
+    const result = await api('/api/choose-folder', {method: 'POST', body: {start: app.meta.project.replace(/\/[^/]*$/, '')}});
+    if (result.path) {
+      $('project-path').value = result.path;
+      await openProject(result.path);
+      return;
+    }
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+  $('project-select').value = app.meta.project;
 }
 
 async function openProject(path) {
@@ -971,7 +1257,7 @@ function activateTab(name) {
   document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === name));
   document.querySelectorAll('.pane').forEach((pane) => pane.classList.toggle('active', pane.id === `pane-${name}`));
   if (name === 'data') refreshData();
-  if (name === 'flow') refreshGraph();
+  if (name === 'flow') { refreshGraph(); refreshWorkflows(); }
 }
 
 async function poll() {
@@ -986,6 +1272,7 @@ async function poll() {
   const storeChanged = result.n_structures !== app.nStructures;
   if (jobsChanged) {
     app.jobsKey = key;
+    await onJobUpdates(result.jobs);
     renderJobs(result.jobs);
     fillSelect($('data-job'), [['', 'all'], ...result.jobs.map((job) => [job.job_id, job.job_id])]);
   }
@@ -995,6 +1282,7 @@ async function poll() {
     if (activeTab() === 'data') refreshData();
     if (activeTab() === 'flow') refreshGraph();
   }
+  if (activeTab() === 'flow' || app.workflowsActive) refreshWorkflows();
 }
 
 function setViewerOptions(options) {
@@ -1024,6 +1312,10 @@ function bindTopbar() {
   });
   $('project-btn').addEventListener('click', showProjectDialog);
   $('project-open').addEventListener('click', () => openProject($('project-path').value.trim()));
+  $('project-select').addEventListener('change', (event) => {
+    if (event.target.value === NEW_PROJECT) chooseProjectFolder();
+    else $('project-path').value = event.target.value;
+  });
   $('project-close').addEventListener('click', () => $('project-dialog').close());
   document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => activateTab(tab.dataset.tab)));
   window.addEventListener('keydown', (event) => {
@@ -1044,21 +1336,32 @@ async function start() {
   fillSelect($('data-role'), [['', 'all'], ...meta.roles]);
   fillSelect($('ads-reaction'), [['', 'All molecules'], ['mine', 'My molecules'], ...meta.reactions.map((name) => [name, `${name} intermediates`])]);
   fillSelect($('calc-name'), meta.calculators.map((entry) => [entry.name, entry.available ? entry.name : `${entry.name} (not installed)`]), 'emt');
-  fillSelect($('task-kind'), meta.tasks.map((task) => task.kind), 'relax');
   $('mol-names').replaceChildren(...meta.molecule_names.map((name) => Object.assign(document.createElement('option'), {value: name})));
   $('site-legend').innerHTML = Object.entries(meta.site_colors)
     .map(([kind, color]) => `<span><span class="dot" style="background:${color}"></span>${kind}</span>`).join('');
+  fillSelect($('host-scheduler'), meta.schedulers, 'pbs');
+  fillSelect($('wf-take'), [['last', 'last structure'], ['best', 'best N'], ['all', 'all structures']], 'last');
   buildTools();
   bindTopbar();
   bindBuild();
   bindRun();
   bindData();
   renderCalculator();
-  renderTask();
   await loadAllWindows();
   await refreshReferences();
+  renderHosts((await api('/api/hosts')).hosts);
   await poll();
   setInterval(poll, 1500);
+  $('quit-btn').hidden = !meta.can_quit;
+  $('quit-btn').addEventListener('click', async () => {
+    if (!window.confirm('Stop GS-GMLIP? Unsaved windows are lost; running jobs continue.')) return;
+    try {
+      await api('/api/quit', {method: 'POST', body: {}});
+      document.body.innerHTML = '<p style="padding:24px;font:16px sans-serif">GS-GMLIP has stopped. You can close this tab; open the app again to restart.</p>';
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
   if (meta.ask_project) showProjectDialog();
 }
 

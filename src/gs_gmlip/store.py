@@ -29,6 +29,8 @@ STAGES: tuple[str, ...] = (
     "md",
     "ga",
     "gcmc",
+    "minima_hopping",
+    "asop",
     "imported",
 )
 

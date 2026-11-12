@@ -32,6 +32,7 @@
     </div>
     <div class="spacer"></div>
     <button id="project-btn" title="Project folder: all databases are stored here. Click to open another."></button>
+    <button id="quit-btn" class="danger" title="Stop the app. Running jobs continue and are picked up at the next start." hidden>Quit</button>
   </header>
 
   <main>
@@ -191,7 +192,10 @@
         <div id="calc-note" class="muted"></div>
         <div id="calc-params" class="grid g2"></div>
         <h3>Task</h3>
-        <label>Kind<select id="task-kind"></select></label>
+        <div class="grid g2">
+          <label>Category<select id="task-category"></select></label>
+          <label>Task<select id="task-kind"></select></label>
+        </div>
         <div id="task-note" class="muted"></div>
         <div id="task-params" class="grid g2"></div>
         <div id="vasp-preview-row" class="row" hidden>
@@ -199,11 +203,45 @@
           <span class="muted">Tags from the pymatgen set, then precision, surface, dispersion, and your overrides.</span>
         </div>
         <pre id="vasp-incar" hidden></pre>
+        <h3>Run on</h3>
+        <div class="row">
+          <label class="grow" title="This machine, or a remote host reached over SSH">Machine<select id="job-host"></select></label>
+          <button id="hosts-btn" title="Add or edit remote hosts (SSH + scheduler)">Hosts…</button>
+        </div>
         <div class="row">
           <input id="job-label" placeholder="Label" class="grow">
-          <button id="job-run" class="primary">Run locally</button>
+          <label class="check" title="Show each new structure of the job in this window as soon as it is written"><input type="checkbox" id="job-follow" checked> Follow live</label>
+          <button id="job-run" class="primary">Run</button>
         </div>
-        <h3>Jobs</h3>
+        <h3>Workflow</h3>
+        <div class="muted">Chain the task above with others: each step starts from the structures the previous step passes on. Add the current task as a step, change the task, add the next.</div>
+        <div class="grid g3">
+          <label title="Which structures of each job feed the next step">Pass on<select id="wf-take"></select></label>
+          <label title="Structures per job when passing on the best">Best N<input id="wf-n" type="number" min="1" step="1" value="1"></label>
+          <label title="Largest number of this workflow's jobs running at once">Parallel<input id="wf-parallel" type="number" min="1" step="1" value="4"></label>
+        </div>
+        <label title="One job per value. Examples: temperature = 300, 600, 900   or   chemical_potentials.O = -5.5, -5.0, -4.5   Several parameters: one per line.">Sweep (optional): parameter = v1, v2, …
+          <textarea id="wf-sweep" rows="2" placeholder="temperature = 300, 600, 900"></textarea></label>
+        <div class="row">
+          <button id="wf-add">Add step</button>
+          <span class="spacer"></span>
+          <button id="wf-clear">Clear</button>
+        </div>
+        <div id="wf-steps"></div>
+        <div class="row">
+          <label class="grow" title="A batch run starts the workflow on every row listed in the Data tab (its current filters, project database)">Start from
+            <select id="wf-input">
+              <option value="window">Active window</option>
+              <option value="rows">All rows listed in the Data tab</option>
+            </select></label>
+          <input id="wf-name" placeholder="Workflow name">
+          <button id="wf-run" class="primary">Run workflow</button>
+        </div>
+        <div class="row">
+          <h3 class="grow">Jobs</h3>
+          <button id="jobs-wait" title="Wait until every running job has finished, then report">Wait for all</button>
+        </div>
+        <div id="jobs-waiting" class="muted" hidden></div>
         <div id="jobs"></div>
       </div>
 
@@ -252,6 +290,9 @@
           <span class="legend-job"></span> job
           <span>Click a node to open it in the active window.</span>
         </div>
+        <h3>Workflows</h3>
+        <div id="workflows" class="muted">No workflow yet. Build one in the Run tab.</div>
+        <h3>Provenance</h3>
         <div id="graph"></div>
       </div>
     </aside>
@@ -262,12 +303,42 @@
   <dialog id="project-dialog">
     <h3 class="dialog-title">Project folder</h3>
     <p class="muted">Everything a project produces is stored in this folder: the structure database, jobs, the project molecule library, and plugins. A new folder is created if it does not exist.</p>
+    <label>Project
+      <select id="project-select"></select></label>
     <div class="row">
       <input id="project-path" class="grow" placeholder="/path/to/project">
       <button id="project-open" class="primary">Open project</button>
     </div>
-    <div id="project-recent"></div>
     <div class="row"><span class="spacer"></span><button id="project-close">Keep current</button></div>
+  </dialog>
+
+  <dialog id="hosts-dialog">
+    <h3 class="dialog-title">Remote hosts</h3>
+    <p class="muted">A job is uploaded over SSH, submitted to the scheduler, and its structures are merged back into this project while it runs. SSH must work without a password prompt (key or agent). Hosts are stored for all projects.</p>
+    <div id="hosts-list"></div>
+    <div class="grid g3">
+      <label>Name<input id="host-name" placeholder="vanda"></label>
+      <label title="An alias from ~/.ssh/config, or user@host">SSH destination<input id="host-host" placeholder="vanda"></label>
+      <label>Scheduler<select id="host-scheduler"></select></label>
+      <label title="One sub-directory per job is created here">Remote directory<input id="host-root" value="~/gs_gmlip_jobs"></label>
+      <label>Queue<input id="host-queue" placeholder="batch_gpu"></label>
+      <label title="Project or account to charge (#PBS -P)">Account<input id="host-account"></label>
+      <label title="#PBS -l …">Resources<input id="host-resources" placeholder="select=1:ncpus=8:ngpus=1:mem=32gb"></label>
+      <label>Wall time<input id="host-walltime" placeholder="24:00:00"></label>
+      <label title="Seconds between two synchronisations of a running job">Sync every (s)<input id="host-sync" type="number" min="1" step="1" value="15"></label>
+    </div>
+    <label title="The job directory is appended">Worker command<input id="host-command" value="gs_gmlip run-job"></label>
+    <label title="Shell lines run before the worker, one per line">Environment setup
+      <textarea id="host-setup" rows="3" placeholder="module load cuda&#10;source ~/venvs/gs_gmlip/bin/activate"></textarea></label>
+    <label title="Further scheduler directives, one per line, without #PBS">Extra directives
+      <textarea id="host-directives" rows="2"></textarea></label>
+    <div id="host-check" class="muted"></div>
+    <div class="row">
+      <button id="host-save" class="primary">Save host</button>
+      <button id="host-test" title="Save, then check connection, scheduler, and worker command">Save and test</button>
+      <span class="spacer"></span>
+      <button id="hosts-close">Close</button>
+    </div>
   </dialog>
 
   <dialog id="log-dialog">

@@ -31,14 +31,24 @@ from gs_gmlip.app.scene import SITE_COLORS, build_scene
 from gs_gmlip.evaluator import vasp
 from gs_gmlip.evaluator.calculators import calculator_entries, matgl_models
 from gs_gmlip.interface import operations as ops
-from gs_gmlip.config import recent_projects, remember_project
+from gs_gmlip.config import folder_picker_available, recent_projects, remember_project
 from gs_gmlip.interface.core import Interface
 from gs_gmlip.interface.intermediates import REACTIONS
 from gs_gmlip.interface.molecules import USER_SCOPES, MoleculeLibrary
 from gs_gmlip.interface.solvation import fill_solvent, packmol_available
-from gs_gmlip.jobs.executor import BaseExecutor, LocalExecutor
+from gs_gmlip.jobs.executor import BaseExecutor
+from gs_gmlip.jobs.remote import (
+    SCHEDULERS,
+    ProjectExecutor,
+    RemoteHost,
+    check_host,
+    load_hosts,
+    remove_host,
+    save_host,
+)
 from gs_gmlip.jobs.spec import JobSpec
-from gs_gmlip.jobs.tasks import OPTIMIZERS, TASKS
+from gs_gmlip.jobs.workflow import TAKE, StepSpec, WorkflowEngine, WorkflowSpec
+from gs_gmlip.jobs.tasks import OPTIMIZERS, TASK_CATEGORIES, TASKS
 from gs_gmlip.plugins import load_plugins
 from gs_gmlip.energetics import analyze
 from gs_gmlip.store import ROLES, STAGES, Project, StructureRecord, global_store
@@ -108,14 +118,15 @@ class Session:
 
     Args:
         project: Project (store + jobs directory) the session works in.
-        executor: Job executor; a ``LocalExecutor`` by default.
+        executor: Job executor; a ``ProjectExecutor`` (local and remote hosts) by default.
     """
 
     def __init__(self, project: Project, executor: BaseExecutor | None = None):
         self.project = project
-        self.executor = executor or LocalExecutor(project)
+        self.executor = executor or ProjectExecutor(project)
         self.plugins = load_plugins(project.root)
         self.library = MoleculeLibrary(project.root)
+        self.workflows = WorkflowEngine(project, self.executor)
         remember_project(project.root)
         self.workspaces: dict[str, Workspace] = {}
         self._counters = dict.fromkeys(WORKSPACE_KINDS, 0)
@@ -328,6 +339,9 @@ class Session:
             "optimizers": list(OPTIMIZERS),
             "export_formats": list(EXPORT_FORMATS),
             "packmol": packmol_available(),
+            "schedulers": sorted(SCHEDULERS),
+            "workflow_take": list(TAKE),
+            "folder_picker": folder_picker_available(),
             "plugins": list(self.plugins),
             "vasp": {
                 "presets": [
@@ -348,9 +362,12 @@ class Session:
                     "kind": task.kind,
                     "description": task.description,
                     "defaults": task.defaults,
+                    "category": task.category,
+                    "applies_to": list(task.applies_to),
                 }
                 for task in TASKS.values()
             ],
+            "task_categories": list(TASK_CATEGORIES),
         }
 
     # ------------------------------------------------------------------
@@ -694,8 +711,12 @@ class Session:
         calculator_params: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         label: str = "",
+        host: str = "",
     ) -> str:
-        """Store a window's structure if needed and start a job on it."""
+        """Store a window's structure if needed and start a job on it.
+
+        ``host`` names a configured remote host; empty runs on this machine.
+        """
         entries = calculator_entries()
         if calculator not in entries:
             raise ValueError(f"unknown calculator {calculator!r}")
@@ -705,6 +726,12 @@ class Session:
             )
         if kind not in TASKS:
             raise ValueError(f"unknown task {kind!r}")
+        window = self._ws(workspace_id)
+        if window.kind not in TASKS[kind].applies_to:
+            allowed = ", ".join(TASKS[kind].applies_to)
+            raise ValueError(
+                f"task {kind!r} is for {allowed} models, but {window.name} is a {window.kind} window"
+            )
         spec = JobSpec(
             kind=kind,
             structure_id=self.save(workspace_id),
@@ -713,10 +740,98 @@ class Session:
             params=dict(params or {}),
             label=label,
         )
+        if host:
+            if not isinstance(self.executor, ProjectExecutor):
+                raise ValueError(
+                    "this session's executor cannot send jobs to remote hosts"
+                )
+            return self.executor.submit(spec, host=host)
         return self.executor.submit(spec)
+
+    def hosts(self) -> dict[str, Any]:
+        """Configured remote hosts."""
+        return {"hosts": [host.to_dict() for host in load_hosts().values()]}
+
+    def save_host(self, **settings: Any) -> dict[str, Any]:
+        """Add or replace a remote host."""
+        save_host(RemoteHost.from_dict(settings))
+        return self.hosts()
+
+    def remove_host(self, name: str) -> dict[str, Any]:
+        """Forget a remote host."""
+        remove_host(name)
+        return self.hosts()
+
+    def check_host(self, name: str) -> dict[str, Any]:
+        """Check connection, scheduler, and worker command of a host."""
+        hosts = load_hosts()
+        if name not in hosts:
+            raise ValueError(f"unknown host {name!r}")
+        return check_host(hosts[name], getattr(self.executor, "_transport", None))
+
+    def wait_jobs(self, timeout: float = 20.0) -> dict[str, Any]:
+        """Wait until no job or workflow is active or ``timeout`` seconds passed; return the job list."""
+        import time
+
+        deadline = time.time() + max(0.0, float(timeout))
+        while True:
+            self.workflows.advance()
+            busy = any(status.active for _, status in self.executor.jobs())
+            busy = busy or any(
+                self.workflows.state(name)["state"] == "running"
+                for name in self.workflows.ids()
+            )
+            if not busy or time.time() >= deadline:
+                return self.jobs()
+            time.sleep(0.5)
+
+    def submit_workflow(
+        self,
+        workspace_id: str | None,
+        name: str,
+        steps: list[dict[str, Any]],
+        inputs: list[int] | None = None,
+        max_parallel: int = 4,
+    ) -> str:
+        """Start a workflow on the given stored structures, or on a window's structure.
+
+        Args:
+            workspace_id: Window whose structure is the input when ``inputs`` is empty.
+            name: Label of the workflow.
+            steps: Step settings, see ``gs_gmlip.jobs.workflow.StepSpec``.
+            inputs: Row ids of the project store to start from (batch run).
+            max_parallel: Largest number of the workflow's jobs active at once.
+        """
+        entries = calculator_entries()
+        specs = [StepSpec(**step) for step in steps]
+        for step in specs:
+            if step.calculator not in entries:
+                raise ValueError(f"unknown calculator {step.calculator!r}")
+            if not entries[step.calculator].available:
+                raise ValueError(
+                    f"calculator {step.calculator!r} needs the '{entries[step.calculator].requires}' package"
+                )
+            if step.host and step.host not in load_hosts():
+                raise ValueError(f"unknown host {step.host!r}")
+        rows = [int(row) for row in inputs or []] or [self.save(workspace_id)]
+        spec = WorkflowSpec(
+            name=name or "workflow", inputs=rows, steps=specs, max_parallel=max_parallel
+        )
+        return self.workflows.submit(spec)
+
+    def workflow_list(self) -> dict[str, Any]:
+        """All workflows with per-step job counts, newest first."""
+        self.workflows.advance()
+        return {"workflows": self.workflows.summaries()}
+
+    def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Stop a workflow and its active jobs."""
+        self.workflows.cancel(workflow_id)
+        return self.workflow_list()
 
     def jobs(self) -> dict[str, Any]:
         """All jobs with their status, newest first, plus the store size."""
+        self.workflows.advance()
         items = []
         for spec, status in self.executor.jobs():
             items.append(
@@ -726,11 +841,18 @@ class Session:
                     "calculator": spec.calculator,
                     "structure_id": spec.structure_id,
                     "label": spec.label,
+                    "host": self.executor.where(spec.job_id)
+                    if isinstance(self.executor, ProjectExecutor)
+                    else "",
                     "state": status.state,
                     "active": status.active,
                     "progress": status.progress,
                     "message": status.message,
                     "n_structures": status.n_structures,
+                    "last_structure_id": status.last_structure_id,
+                    "category": TASKS[spec.kind].category
+                    if spec.kind in TASKS
+                    else "other",
                 }
             )
         return {"jobs": items, "n_structures": len(self.project.store)}

@@ -19,3 +19,6 @@ docs/_build/
 
 # Development files
 dev/
+
+# Built application bundles
+dist/

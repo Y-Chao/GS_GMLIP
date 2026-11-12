@@ -8,6 +8,7 @@ picks them up from ``TASKS`` without further wiring.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
@@ -33,6 +34,8 @@ from gs_gmlip.interface.molecules import MoleculeLibrary
 from gs_gmlip.jobs.spec import JobSpec
 from gs_gmlip.search.ga.runner import GARunner
 from gs_gmlip.search.gcmc.runner import GCMCRunner
+from gs_gmlip.search.asop import ASOPRunner
+from gs_gmlip.search.minima_hopping import MinimaHoppingRunner
 from gs_gmlip.store import StructureStore
 
 logger = logging.getLogger(__name__)
@@ -139,25 +142,73 @@ class Task:
         run: The task function.
         defaults: Default parameters (also drives the app's parameter form).
         description: One-line description shown in the app.
+        category: What kind of calculation it is, one of ``TASK_CATEGORIES``.
+        applies_to: Model types it makes sense for, from ``MODEL_TYPES``.
     """
 
     kind: str
     run: Callable[[TaskContext], None]
     defaults: dict[str, Any]
     description: str
+    category: str = "other"
+    applies_to: tuple[str, ...] = ("bulk", "surface", "molecule")
 
+
+# Calculation categories, in the order the app lists them.
+TASK_CATEGORIES: tuple[str, ...] = (
+    "single point",
+    "optimization",
+    "molecular dynamics",
+    "global search",
+    "input files",
+    "other",
+)
+# Model types a task can apply to (the kinds of window in the app).
+MODEL_TYPES: tuple[str, ...] = ("bulk", "surface", "molecule")
 
 TASKS: dict[str, Task] = {}
 
 
-def register_task(kind: str, defaults: dict[str, Any], description: str = ""):
-    """Decorator registering a task function under ``kind``."""
+def register_task(
+    kind: str,
+    defaults: dict[str, Any],
+    description: str = "",
+    category: str = "other",
+    applies_to: tuple[str, ...] = MODEL_TYPES,
+):
+    """Decorator registering a task function under ``kind``.
+
+    Args:
+        kind: Job kind.
+        defaults: Default parameters.
+        description: One-line description shown in the app.
+        category: One of ``TASK_CATEGORIES``.
+        applies_to: Model types the task is offered for, from ``MODEL_TYPES``.
+
+    Raises:
+        ValueError: For an unknown category or model type.
+    """
+    _check_task_labels(category, applies_to)
 
     def decorator(func: Callable[[TaskContext], None]):
-        TASKS[kind] = Task(kind, func, dict(defaults), description)
+        TASKS[kind] = Task(
+            kind, func, dict(defaults), description, category, tuple(applies_to)
+        )
         return func
 
     return decorator
+
+
+def _check_task_labels(category: str, applies_to: tuple[str, ...]) -> None:
+    if category not in TASK_CATEGORIES:
+        raise ValueError(
+            f"unknown task category {category!r}; choose from {TASK_CATEGORIES}"
+        )
+    unknown = set(applies_to) - set(MODEL_TYPES)
+    if unknown:
+        raise ValueError(
+            f"unknown model types {sorted(unknown)}; choose from {MODEL_TYPES}"
+        )
 
 
 def run_task(
@@ -199,7 +250,10 @@ def _max_force(atoms) -> float:
 
 
 @register_task(
-    "singlepoint", defaults={}, description="Energy and forces of the structure as is"
+    "singlepoint",
+    defaults={},
+    description="Energy and forces of the structure as is",
+    category="single point",
 )
 def singlepoint(context: TaskContext) -> None:
     """Evaluate energy and forces without moving atoms."""
@@ -219,6 +273,7 @@ def singlepoint(context: TaskContext) -> None:
         "user_incar_settings": {},
     },
     description="Write VASP inputs from a pymatgen input set into the job directory (no calculation)",
+    category="input files",
 )
 def vasp_inputs(context: TaskContext) -> None:
     """Write INCAR/KPOINTS/POSCAR/POTCAR for the input structure; the calculator is not used."""
@@ -239,6 +294,7 @@ def vasp_inputs(context: TaskContext) -> None:
     "relax",
     defaults={"optimizer": "BFGS", "fmax": 0.05, "steps": 200, "write_interval": 5},
     description="Local geometry optimization (fixed atoms stay fixed)",
+    category="optimization",
 )
 def relax(context: TaskContext) -> None:
     """Relax the structure, storing every ``write_interval``-th optimizer step."""
@@ -283,6 +339,8 @@ def relax(context: TaskContext) -> None:
         "pressure_GPa": 0.0,
     },
     description="Bulk: relax atomic positions and the cell (needs a calculator with stress)",
+    category="optimization",
+    applies_to=("bulk",),
 )
 def cell_relax(context: TaskContext) -> None:
     """Relax positions and lattice together, storing every ``write_interval``-th step.
@@ -336,6 +394,7 @@ def cell_relax(context: TaskContext) -> None:
         "seed": 0,
     },
     description="NVT molecular dynamics (Langevin thermostat); constraints are honoured",
+    category="molecular dynamics",
 )
 def nvt(context: TaskContext) -> None:
     """Run Langevin NVT MD, storing every ``write_interval``-th frame."""
@@ -384,6 +443,8 @@ def nvt(context: TaskContext) -> None:
         "seed": 0,
     },
     description="Bulk: NPT molecular dynamics (MTK Nose-Hoover chains; needs stress, no constraints)",
+    category="molecular dynamics",
+    applies_to=("bulk",),
 )
 def npt(context: TaskContext) -> None:
     """Run Martyna-Tobias-Klein NPT MD, storing every ``write_interval``-th frame.
@@ -468,6 +529,8 @@ class _StoringEvaluator(CalculatorEvaluator):
         self._total = max(total, 1)
         self._score = score
         self._count = 0
+        # Set by tasks that measure progress in their own units instead of evaluations.
+        self.progress: float | None = None
 
     def evaluate(self, interface, relax=False, fmax=None, steps=None):
         interface = super().evaluate(interface, relax=relax, fmax=fmax, steps=steps)
@@ -484,7 +547,12 @@ class _StoringEvaluator(CalculatorEvaluator):
         message = f"evaluation {self._count}: E = {energy:.4f} eV"
         if score is not None:
             message += f", score = {score:.4f} eV"
-        self._context.report(min(self._count / self._total, 0.99), message)
+        progress = (
+            self.progress
+            if self.progress is not None
+            else min(self._count / self._total, 0.99)
+        )
+        self._context.report(progress, message)
         return interface
 
 
@@ -548,6 +616,7 @@ def register_searcher(
     description: str = "",
     score: Callable[[dict[str, Any]], Callable[[Interface], float | None]]
     | None = None,
+    applies_to: tuple[str, ...] = ("surface",),
 ) -> None:
     """Register a structure-search algorithm as a job kind.
 
@@ -566,6 +635,7 @@ def register_searcher(
         description: One-line description shown in the app.
         score: Optional ``params -> (interface -> eV)`` building the objective
             stored with each row and used for ranking (lower is better).
+        applies_to: Model types the search is offered for (surfaces by default).
     """
     defaults = {"n_steps": 20, "fmax": 0.1, "relax_steps": 100, **defaults}
 
@@ -590,7 +660,10 @@ def register_searcher(
             1.0, f"{kind} finished: {context.n_structures} structures evaluated"
         )
 
-    TASKS[kind] = Task(kind, run, defaults, description)
+    _check_task_labels("global search", applies_to)
+    TASKS[kind] = Task(
+        kind, run, defaults, description, "global search", tuple(applies_to)
+    )
 
 
 @register_task(
@@ -605,6 +678,8 @@ def register_searcher(
         "seed": 0,
     },
     description="Genetic algorithm at fixed adsorbate composition",
+    category="global search",
+    applies_to=("surface",),
 )
 def genetic_algorithm(context: TaskContext) -> None:
     """Run a GA search; every relaxed candidate is stored."""
@@ -654,6 +729,8 @@ def genetic_algorithm(context: TaskContext) -> None:
         "seed": 0,
     },
     description="Grand-canonical Monte Carlo at fixed chemical potentials",
+    category="global search",
+    applies_to=("surface",),
 )
 def grand_canonical_mc(context: TaskContext) -> None:
     """Run a GCMC search; every evaluated proposal is stored with its grand potential."""
@@ -693,3 +770,118 @@ def grand_canonical_mc(context: TaskContext) -> None:
         f"GCMC finished: best E = {runner.best_energy:.4f} eV, "
         f"acceptance = {runner.ensemble.acceptance_rate:.2f}",
     )
+
+
+register_searcher(
+    "minima_hopping",
+    lambda evaluator, start, params, workdir: MinimaHoppingRunner(
+        evaluator,
+        start,
+        workdir=str(workdir),
+        temperature=float(params["temperature"]),
+        ediff=float(params["ediff"]),
+        mdmin=int(params["mdmin"]),
+        timestep=float(params["timestep_fs"]),
+        max_md_steps=int(params["max_md_steps"]),
+        seed=int(params["seed"]),
+    ),
+    defaults={
+        "n_steps": 20,
+        "fmax": 0.05,
+        "relax_steps": 200,
+        "temperature": 1000.0,
+        "ediff": 0.5,
+        "mdmin": 2,
+        "timestep_fs": 1.0,
+        "max_md_steps": 500,
+        "seed": 0,
+    },
+    description="Minima hopping (Goedecker 2004): MD escapes and relaxations with adaptive temperature",
+    applies_to=("surface", "molecule"),
+)
+
+
+@register_task(
+    "asop",
+    defaults={
+        "chemical_potentials": {"O": -5.0},
+        "min_area": 1,
+        "max_area": 4,
+        "max_coverage": 1.0,
+        "max_cycles": 3,
+        "max_compositions": 15,
+        "search_steps": 5,
+        "sigma": 0.1,
+        "min_distance": 1.5,
+        "max_distance": 3.0,
+        "temperature": 1000.0,
+        "max_md_steps": 300,
+        "n_steps": 1000,
+        "fmax": 0.05,
+        "relax_steps": 200,
+        "seed": 0,
+    },
+    description="ASOP (Chen, Shang, Liu 2022): optimal surface phase over periodicity and composition "
+    "at fixed chemical potentials; start from the clean primitive surface cell",
+    category="global search",
+    applies_to=("surface",),
+)
+def asop(context: TaskContext) -> None:
+    """Run ASOP; every relaxation is stored with its surface free energy as the score."""
+    params = context.params
+    runner: ASOPRunner | None = None
+
+    def _score(interface: Interface) -> float:
+        return runner.surface_free_energy(interface) if runner is not None else 0.0
+
+    evaluator = _StoringEvaluator(
+        context,
+        stage="asop",
+        method="ASOP",
+        total=1,
+        score=_score,
+        fmax=float(params["fmax"]),
+        relax_steps=int(params["relax_steps"]),
+    )
+    runner = ASOPRunner(
+        evaluator,
+        context.load_input(),
+        {name: float(mu) for name, mu in dict(params["chemical_potentials"]).items()},
+        workdir=str(context.workdir),
+        min_area=int(params["min_area"]),
+        max_area=int(params["max_area"]),
+        max_coverage=float(params["max_coverage"]),
+        max_cycles=int(params["max_cycles"]),
+        max_compositions=int(params["max_compositions"]),
+        search_steps=int(params["search_steps"]),
+        sigma=float(params["sigma"]),
+        min_distance=float(params["min_distance"]),
+        max_distance=float(params["max_distance"]),
+        hopping={
+            "temperature": float(params["temperature"]),
+            "max_md_steps": int(params["max_md_steps"]),
+        },
+        seed=int(params["seed"]),
+    )
+    runner.setup()
+    cycles = min(int(params["n_steps"]), runner.n_cycles)
+    # Progress is counted in cycles, not evaluations: their number is not known in advance.
+    for done in range(cycles):
+        evaluator.progress = done / cycles
+        info = runner.step()
+        logger.info("ASOP cycle: %s", info)
+        (Path(context.workdir) / "asop_phases.json").write_text(
+            json.dumps(runner.phase_table(), indent=2)
+        )
+        context.report(
+            min((done + 1) / cycles, 0.99),
+            f"cycle {done + 1}/{cycles}, {info.get('grid', '')}: best gamma = {info.get('best_gamma', float('nan')):.4f} eV/cell",
+        )
+    best = runner.best_phases(1)
+    summary = (
+        f"most stable: {runner.formula(best[0].counts)} in {runner.grids[best[0].grid].supercell.label}, "
+        f"gamma = {best[0].gamma:.4f} eV/cell"
+        if best
+        else "no phase found"
+    )
+    context.report(1.0, f"ASOP finished: {len(runner.phases)} phases, {summary}")

@@ -10,6 +10,7 @@ from gs_gmlip.evaluator.calculators import (
     level_of_theory,
     matgl_models,
     register_calculator,
+    resolve_model_path,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "level_of_theory",
     "matgl_models",
     "register_calculator",
+    "resolve_model_path",
 ]

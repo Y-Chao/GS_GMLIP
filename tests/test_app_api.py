@@ -722,6 +722,62 @@ def test_submit_rejects_unknown_task_and_calculator(slab_client):
     )  # empty
 
 
+def test_tasks_are_offered_by_category_and_model_type(slab_client):
+    client = slab_client
+    meta = client.get("/api/meta").json()
+    assert meta["task_categories"][:4] == [
+        "single point",
+        "optimization",
+        "molecular dynamics",
+        "global search",
+    ]
+    tasks = {task["kind"]: task for task in meta["tasks"]}
+    assert (
+        tasks["cell_relax"]["applies_to"] == ["bulk"]
+        and tasks["gcmc"]["category"] == "global search"
+    )
+    calculators = {entry["name"]: entry for entry in meta["calculators"]}
+    assert (
+        calculators["mace"]["defaults"]["model_path"] == ""
+        and "model_path" in calculators["matgl"]["defaults"]
+    )
+
+    # A task is refused for a model type it does not apply to.
+    response = post(
+        client, "/api/jobs", SURFACE, {"kind": "cell_relax", "calculator": "emt"}
+    )
+    assert (
+        response.status_code == 400
+        and "is for bulk models" in response.json()["detail"]
+    )
+    assert (
+        post(
+            client, "/api/jobs", BULK, {"kind": "gcmc", "calculator": "emt"}
+        ).status_code
+        == 400
+    )
+
+
+def test_wait_endpoint_returns_when_jobs_finish(slab_client):
+    client = slab_client
+    job_id = post(
+        client, "/api/jobs", SURFACE, {"kind": "singlepoint", "calculator": "emt"}
+    ).json()["job_id"]
+    result = client.get("/api/jobs/wait", params={"timeout": 60}).json()
+    (job,) = result["jobs"]
+    assert (job["job_id"], job["state"], job["active"], job["category"]) == (
+        job_id,
+        "done",
+        False,
+        "single point",
+    )
+    assert job["last_structure_id"] == result["n_structures"] == 2
+    assert (
+        client.get("/api/jobs/wait", params={"timeout": 0}).json()["jobs"][0]["state"]
+        == "done"
+    )
+
+
 def test_vasp_preview_layers_tags(slab_client):
     result = post(
         slab_client,
@@ -761,3 +817,51 @@ def test_session_without_server(tmp_path):
     assert session.state()["workspace"]["id"] == BULK  # the first window is the default
     with pytest.raises(ValueError, match="unknown edit operation"):
         session.edit(SURFACE, "nope")
+
+
+# ---------------------------------------------------------------- desktop launcher
+
+
+def test_quit_is_only_offered_when_enabled(client):
+    assert client.get("/api/meta").json()["can_quit"] is False
+    assert client.get("/api/meta").json()["app"] == "gs_gmlip"
+    assert client.post("/api/quit").status_code == 403
+    stopped = []
+    client.app.state.quit = lambda: stopped.append(True)
+    assert client.get("/api/meta").json()["can_quit"] is True
+    assert client.post("/api/quit").json() == {"stopping": True}
+    assert stopped == [True]
+
+
+def test_macos_app_bundle(tmp_path):
+    import plistlib
+    import sys
+
+    from gs_gmlip.app.bundle import build_macos_app
+
+    if sys.platform != "darwin":
+        with pytest.raises(RuntimeError, match="macOS"):
+            build_macos_app(tmp_path)
+        return
+    bundle = build_macos_app(
+        tmp_path, python="/some/env with space/bin/python", port=8123
+    )
+    assert bundle == tmp_path.resolve() / "GS-GMLIP.app"
+    info = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+    assert info["CFBundleExecutable"] == "GS-GMLIP" and info["LSUIElement"] is True
+    launcher = bundle / "Contents" / "MacOS" / "GS-GMLIP"
+    text = launcher.read_text()
+    assert "PYTHON='/some/env with space/bin/python'" in text
+    assert "-m gs_gmlip.cli app --port 8123 --allow-quit" in text
+    assert launcher.stat().st_mode & 0o111
+
+
+def test_run_app_reuses_a_running_app(monkeypatch):
+    from gs_gmlip.app import server
+
+    opened = []
+    monkeypatch.setattr(server, "_port_free", lambda host, port: False)
+    monkeypatch.setattr(server, "_running_app", lambda url: True)
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    server.run_app(port=8080)  # returns instead of starting a second server
+    assert opened == ["http://127.0.0.1:8080"]

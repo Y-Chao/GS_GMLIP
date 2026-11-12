@@ -19,7 +19,6 @@ import numpy as np
 from ase import Atoms
 from ase.build import molecule as ase_molecule
 from ase.constraints import FixAtoms, FixBondLengths, FixSubsetCom, Hookean
-from pymatgen.analysis.adsorption import AdsorbateSiteFinder
 from pymatgen.core import Lattice, Molecule, Structure
 from pymatgen.core.operations import SymmOp
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -360,6 +359,10 @@ def find_adsorption_sites(
         Sites ordered ontop, bridge, hollow.
     """
     slab = _bare_structure(interface.substrate)
+    from pymatgen.analysis.adsorption import (
+        AdsorbateSiteFinder,
+    )  # slow import, only needed here
+
     finder = AdsorbateSiteFinder(slab, height=surface_height)
     found = finder.find_adsorption_sites(
         distance=distance,

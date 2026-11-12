@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any, Callable
 
 from ase.calculators.calculator import Calculator
@@ -107,6 +108,12 @@ def level_of_theory(name: str, params: dict[str, Any] | None = None) -> str:
     entry = _REGISTRY.get(name)
     merged = {**(entry.defaults if entry else {}), **(params or {})}
     parts = [name]
+    if merged.get("model_path"):
+        # A user-trained model is identified by its file or directory name and
+        # the folder it sits in; the pretrained ``model`` name does not apply.
+        path = Path(str(merged["model_path"])).expanduser()
+        parts.append("custom:" + "/".join(path.parts[-2:]))
+        merged.pop("model", None)
     for key in ("model", "xc", "encut", "kspacing"):
         if key in merged and merged[key] not in (None, ""):
             value = merged[key]
@@ -217,19 +224,45 @@ def matgl_models() -> list[str]:
     return models
 
 
-def _matgl(model: str = MATGL_DEFAULT_MODEL, **params: Any) -> Calculator:
+def resolve_model_path(model_path: str | Path) -> Path:
+    """Absolute path of a user-trained model, checked to exist.
+
+    Args:
+        model_path: A model file (MACE ``.model``) or a model directory
+            (MatGL), ``~`` allowed.
+
+    Raises:
+        FileNotFoundError: If nothing exists at the path.
+    """
+    path = Path(model_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"no model at {path}")
+    return path
+
+
+def _matgl(
+    model: str = MATGL_DEFAULT_MODEL, model_path: str = "", **params: Any
+) -> Calculator:
+    """MatGL calculator from a pretrained model name or a user-trained model directory."""
     import matgl
     from matgl.ext.ase import PESCalculator
 
     # ASE optimizers and barostats expect stress in eV/Å^3 (PESCalculator defaults to GPa).
     params.setdefault("stress_unit", "eV/A3")
-    return PESCalculator(potential=matgl.load_model(model), **params)
+    source = str(resolve_model_path(model_path)) if model_path else model
+    return PESCalculator(potential=matgl.load_model(source), **params)
 
 
-def _mace(**params: Any) -> Calculator:
+def _mace(model: str = "medium", model_path: str = "", **params: Any) -> Calculator:
+    """MACE calculator from a foundation model name or a user-trained ``.model`` file."""
+    if model_path:
+        from mace.calculators import MACECalculator
+
+        params.setdefault("device", "cpu")
+        return MACECalculator(model_paths=str(resolve_model_path(model_path)), **params)
     from mace.calculators import mace_mp
 
-    return mace_mp(**params)
+    return mace_mp(model=model, **params)
 
 
 def _vasp(**params: Any) -> Calculator:
@@ -247,16 +280,18 @@ register_calculator(
     "matgl",
     _matgl,
     requires="matgl",
-    description="MatGL foundation potential (TensorNet, QET, CHGNet, M3GNet on MatPES; default r2SCAN TensorNet)",
-    defaults={"model": MATGL_DEFAULT_MODEL},
+    description="MatGL potential: a pretrained model (default r2SCAN TensorNet) or, with model_path, "
+    "the directory of a model you trained",
+    defaults={"model": MATGL_DEFAULT_MODEL, "model_path": ""},
     choices={"model": list(MATGL_MODELS)},
 )
 register_calculator(
     "mace",
     _mace,
     requires="mace",
-    description="MACE foundation potential (mace_mp)",
-    defaults={"model": "medium", "default_dtype": "float64"},
+    description="MACE potential: a foundation model (mace_mp) or, with model_path, the .model file "
+    "of a model you trained",
+    defaults={"model": "medium", "model_path": "", "default_dtype": "float64"},
 )
 register_calculator(
     "vasp",

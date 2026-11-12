@@ -13,6 +13,7 @@ import sys
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Callable
 
 from gs_gmlip.jobs.spec import (
     LOG_FILE,
@@ -77,6 +78,50 @@ class BaseExecutor(ABC):
         if not path.exists():
             return ""
         return "\n".join(path.read_text(errors="replace").splitlines()[-tail:])
+
+    def wait(
+        self,
+        job_ids: list[str] | None = None,
+        timeout: float | None = None,
+        poll: float = 0.5,
+        on_update: Callable[[str, JobStatus], None] | None = None,
+    ) -> dict[str, JobStatus]:
+        """Block until jobs finish, calling back on every status change.
+
+        Args:
+            job_ids: Jobs to wait for; all jobs of the project if omitted.
+            timeout: Give up after this many seconds (``None`` waits forever).
+            poll: Seconds between status checks.
+            on_update: Called as ``on_update(job_id, status)`` whenever a job's
+                state, progress, message, or structure count changes, so
+                results can be inspected while jobs are still running.
+
+        Returns:
+            The last status of each job; jobs still active when the timeout
+            expired are included with their active state.
+        """
+        if job_ids is None:
+            job_ids = [spec.job_id for spec, _ in self.jobs()]
+        deadline = None if timeout is None else time.time() + timeout
+        seen: dict[str, tuple] = {}
+        while True:
+            statuses = {job_id: self.status(job_id) for job_id in job_ids}
+            for job_id, status in statuses.items():
+                key = (
+                    status.state,
+                    status.progress,
+                    status.message,
+                    status.n_structures,
+                )
+                if seen.get(job_id) != key:
+                    seen[job_id] = key
+                    if on_update is not None:
+                        on_update(job_id, status)
+            if not any(status.active for status in statuses.values()):
+                return statuses
+            if deadline is not None and time.time() >= deadline:
+                return statuses
+            time.sleep(poll)
 
 
 def _pid_alive(pid: int) -> bool:

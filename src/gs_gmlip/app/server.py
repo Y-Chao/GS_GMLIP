@@ -56,6 +56,8 @@ def create_app(
     )
     app.state.session = session or Session(project)
     app.state.ask_project = False
+    # Set by ``run_app(allow_quit=True)``: a callable that stops the server.
+    app.state.quit = None
 
     class _Current:
         """Attribute proxy to the app's current session, which changes when a project is opened."""
@@ -71,7 +73,22 @@ def create_app(
 
     @app.get("/api/meta")
     def meta() -> dict[str, Any]:
-        return {**session.meta(), "ask_project": app.state.ask_project}
+        return {
+            **session.meta(),
+            "ask_project": app.state.ask_project,
+            "app": "gs_gmlip",
+            "can_quit": app.state.quit is not None,
+        }
+
+    @app.post("/api/quit")
+    def quit_app() -> dict[str, Any]:
+        """Stop the server (only when it was started as a desktop app). Running jobs continue."""
+        if app.state.quit is None:
+            raise HTTPException(
+                status_code=403, detail="this server was not started with --allow-quit"
+            )
+        app.state.quit()
+        return {"stopping": True}
 
     @app.post("/api/project")
     def open_project(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
@@ -81,7 +98,12 @@ def create_app(
             raise HTTPException(status_code=400, detail="give a project directory")
         app.state.session = _run(lambda: Session(Project(path)))
         app.state.ask_project = False
-        return {**session.meta(), "ask_project": False}
+        return {
+            **session.meta(),
+            "ask_project": False,
+            "app": "gs_gmlip",
+            "can_quit": app.state.quit is not None,
+        }
 
     @app.get("/api/state")
     def state(ws: str = "") -> dict[str, Any]:
@@ -215,6 +237,11 @@ def create_app(
     def jobs() -> dict[str, Any]:
         return session.jobs()
 
+    @app.get("/api/jobs/wait")
+    def wait_jobs(timeout: float = 20.0) -> dict[str, Any]:
+        """Long poll: returns when no job is active, or after ``timeout`` seconds."""
+        return session.wait_jobs(min(timeout, 60.0))
+
     @app.post("/api/jobs")
     def submit(ws: str = "", payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         job_id = _run(
@@ -225,9 +252,56 @@ def create_app(
                 payload.get("calculator_params"),
                 payload.get("params"),
                 payload.get("label", ""),
+                payload.get("host", ""),
             )
         )
         return {"job_id": job_id, "state": session.state(ws)}
+
+    @app.get("/api/workflows")
+    def workflows() -> dict[str, Any]:
+        return _run(lambda: session.workflow_list())
+
+    @app.post("/api/workflows")
+    def submit_workflow(
+        ws: str = "", payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        workflow_id = _run(
+            lambda: session.submit_workflow(
+                ws,
+                payload.get("name", ""),
+                payload.get("steps", []),
+                payload.get("inputs"),
+                payload.get("max_parallel", 4),
+            )
+        )
+        return {"workflow_id": workflow_id, "state": session.state(ws)}
+
+    @app.post("/api/workflows/{workflow_id}/cancel")
+    def cancel_workflow(workflow_id: str) -> dict[str, Any]:
+        return _run(lambda: session.cancel_workflow(workflow_id))
+
+    @app.post("/api/choose-folder")
+    def choose_folder(payload: dict[str, Any] = Body(default={})) -> dict[str, str]:
+        """Show the native folder dialog on the machine the app runs on."""
+        from gs_gmlip.config import choose_folder as ask
+
+        return {"path": _run(lambda: ask(start=payload.get("start") or None))}
+
+    @app.get("/api/hosts")
+    def hosts() -> dict[str, Any]:
+        return _run(lambda: session.hosts())
+
+    @app.post("/api/hosts")
+    def save_host(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        return _run(lambda: session.save_host(**payload))
+
+    @app.delete("/api/hosts/{name}")
+    def remove_host(name: str) -> dict[str, Any]:
+        return _run(lambda: session.remove_host(name))
+
+    @app.post("/api/hosts/{name}/check")
+    def check_host(name: str) -> dict[str, Any]:
+        return _run(lambda: session.check_host(name))
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel(job_id: str) -> dict[str, Any]:
@@ -312,13 +386,42 @@ def create_app(
     return app
 
 
+def _running_app(url: str) -> bool:
+    """Whether a GS-GMLIP app already answers at ``url``."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{url}/api/meta", timeout=2) as response:  # noqa: S310 - local http URL
+            return json.loads(response.read()).get("app") == "gs_gmlip"
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def _port_free(host: str, port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
 def run_app(
     project: str | Path | None = None,
     host: str = "127.0.0.1",
     port: int = 8080,
     show: bool = True,
+    allow_quit: bool = False,
 ) -> None:
     """Start the app server (blocks until stopped).
+
+    If a GS-GMLIP app already runs on ``port``, that one is shown and no
+    second server is started. If the port is taken by something else, the
+    next free port is used.
 
     Args:
         project: Project (work) directory holding ``structures.db``, ``jobs/``,
@@ -326,8 +429,10 @@ def run_app(
             project (or ``./gs_project``) is opened and the app asks the user
             to confirm or choose another folder on start.
         host: Interface to bind.
-        port: Port to serve on.
+        port: Preferred port to serve on.
         show: Open a browser window on start.
+        allow_quit: Offer a Quit button in the app that stops this server
+            (for the desktop launcher, which has no terminal to press Ctrl-C in).
     """
     import threading
     import webbrowser
@@ -335,6 +440,19 @@ def run_app(
     import uvicorn
 
     from gs_gmlip.config import recent_projects
+
+    for candidate in range(port, port + 50):
+        url = f"http://{host}:{candidate}"
+        if _port_free(host, candidate):
+            port = candidate
+            break
+        if _running_app(url):
+            print(f"GS-GMLIP app already running on {url}")  # noqa: T201
+            if show:
+                webbrowser.open(url)
+            return
+    else:
+        raise RuntimeError(f"no free port between {port} and {port + 49}")
 
     ask = project is None
     if project is None:
@@ -344,6 +462,11 @@ def run_app(
     app.state.ask_project = ask
     url = f"http://{host}:{port}"
     print(f"GS-GMLIP app on {url}  (project: {app.state.session.project.root})")  # noqa: T201
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=host, port=port, log_level="warning")
+    )
+    if allow_quit:
+        app.state.quit = lambda: setattr(server, "should_exit", True)
     if show:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    server.run()

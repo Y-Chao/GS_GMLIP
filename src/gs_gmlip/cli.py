@@ -1,4 +1,4 @@
-"""Command-line entry point: ``gs_gmlip app``, ``gs_gmlip run-job``, ``gs_gmlip import``."""
+"""Command-line entry point: ``gs_gmlip app``, ``make-app``, ``run-job``, ``import``."""
 
 from __future__ import annotations
 
@@ -22,6 +22,27 @@ def main(argv: list[str] | None = None) -> int:
     app.add_argument(
         "--no-browser", action="store_true", help="do not open a browser window"
     )
+
+    app.add_argument(
+        "--allow-quit",
+        action="store_true",
+        help="show a Quit button in the app that stops the server",
+    )
+
+    make_app = commands.add_parser(
+        "make-app", help="build a double-clickable macOS application (launcher)"
+    )
+    make_app.add_argument(
+        "--output",
+        default="~/Applications",
+        help="directory that receives GS-GMLIP.app",
+    )
+    make_app.add_argument("--port", type=int, default=8080)
+
+    run_workflow = commands.add_parser(
+        "run-workflow", help="run one workflow directory to completion"
+    )
+    run_workflow.add_argument("workflow_dir", help="<project>/workflows/<workflow id>")
 
     run_job = commands.add_parser("run-job", help="run one job directory to completion")
     run_job.add_argument("job_dir")
@@ -63,6 +84,36 @@ def main(argv: list[str] | None = None) -> int:
                 f"{source}: imported {counts['imported']}, skipped {counts['skipped']} -> {store.path}"
             )  # noqa: T201
         return 0
+    if args.command == "make-app":
+        from gs_gmlip.app.bundle import build_macos_app
+
+        try:
+            bundle = build_macos_app(args.output, port=args.port)
+        except (RuntimeError, OSError) as error:
+            print(f"gs_gmlip make-app: {error}", file=sys.stderr)
+            return 1
+        print(f"built {bundle}")  # noqa: T201
+        return 0
+    if args.command == "run-workflow":
+        from pathlib import Path
+
+        from gs_gmlip.jobs.remote import ProjectExecutor
+        from gs_gmlip.jobs.workflow import WorkflowEngine
+        from gs_gmlip.plugins import load_plugins
+        from gs_gmlip.store import Project
+
+        directory = Path(args.workflow_dir).resolve()
+        project = Project(directory.parent.parent)
+        load_plugins(project.root)
+        try:
+            state = WorkflowEngine(project, ProjectExecutor(project)).run(
+                directory.name
+            )
+        except FileNotFoundError:
+            print(f"gs_gmlip run-workflow: no workflow in {directory}", file=sys.stderr)
+            return 1
+        print(f"{directory.name}: {state['state']} {state['message']}")  # noqa: T201
+        return 0 if state["state"] == "done" else 1
     if args.command == "run-job":
         from gs_gmlip.jobs.worker import main as worker_main
 
@@ -77,7 +128,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     run_app(
-        project=args.project, host=args.host, port=args.port, show=not args.no_browser
+        project=args.project,
+        host=args.host,
+        port=args.port,
+        show=not args.no_browser,
+        allow_quit=args.allow_quit,
     )
     return 0
 
