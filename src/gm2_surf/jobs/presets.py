@@ -3,8 +3,8 @@
 A preset fills the entries of the Hosts dialog (scheduler, directory, queue,
 resources, wall time, worker command, environment setup); the user-specific
 part (SSH alias, user name, project code) comes from ``~/.ssh/config`` and
-the dialog. Site facts follow the ``hpc`` and ``install`` documentation of
-cytools (Y-Chao/cytools, checked 2026-11): default resources are a small
+the dialog. Site facts follow the sites' public documentation and the
+author's cluster notes (checked 2026-11): default resources are a small
 slice of one node, software lives in ``~/apps/<code>``, and VASP builds are
 registered as modules ``vasp/<version>-<build>`` under ``~/apps/modulefiles``.
 
@@ -58,7 +58,7 @@ class HostPreset:
 
 
 def _vasp_setup(module: str, potcars: str) -> tuple[str, ...]:
-    """Environment for the ``vasp`` calculator from a cytools-registered VASP module."""
+    """Environment for the ``vasp`` calculator from a VASP module registered under ``~/apps/modulefiles``."""
     return (
         "module use ~/apps/modulefiles",
         f"module load {module}",
