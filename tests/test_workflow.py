@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from gs_gmlip.app.server import create_app
 from gs_gmlip.interface import operations as ops
 from gs_gmlip.jobs import LocalExecutor, StepSpec, WorkflowEngine, WorkflowSpec
 from gs_gmlip.store import Project
@@ -167,6 +165,12 @@ def test_cancel(project, engine):
 
 
 def test_workflow_api(tmp_path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from gs_gmlip.app.server import create_app
+
     client = TestClient(create_app(tmp_path / "proj"))
     assert client.get("/api/meta").json()["workflow_take"] == ["last", "best", "all"]
     ws = "molecule-1"

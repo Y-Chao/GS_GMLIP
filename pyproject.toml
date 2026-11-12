@@ -25,6 +25,9 @@ dev = [
     "isort>=5.13.0",
     "pytest>=8.0.0",
     "httpx>=0.27",
+    # The app, so that its API tests run instead of being skipped.
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
     "jax>=0.4.30",
     "ruff>=0.13.1",
     "sphinx>=7.0.0",

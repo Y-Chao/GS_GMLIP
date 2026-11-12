@@ -7,10 +7,7 @@ import sys
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 
-from gs_gmlip.app.server import create_app
-from gs_gmlip.app.session import Session
 from gs_gmlip.interface import operations as ops
 from gs_gmlip.jobs import JobSpec
 from gs_gmlip.jobs.remote import (
@@ -257,6 +254,13 @@ def test_host_registry_and_check(host):
 
 
 def test_app_submits_to_host_and_lists_where_jobs_run(tmp_path, host):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from gs_gmlip.app.server import create_app
+    from gs_gmlip.app.session import Session
+
     project = Project(tmp_path / "proj")
     session = Session(project, ProjectExecutor(project, LocalTransport()))
     client = TestClient(create_app(project, session))

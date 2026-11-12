@@ -824,6 +824,7 @@ app = [
 ]
 dev = [
     { name = "black" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "isort" },
     { name = "jax" },
@@ -833,6 +834,7 @@ dev = [
     { name = "sphinx" },
     { name = "sphinx-autodoc-typehints" },
     { name = "sphinx-rtd-theme" },
+    { name = "uvicorn" },
 ]
 matgl = [
     { name = "matgl" },
@@ -852,6 +854,7 @@ requires-dist = [
     { name = "ase", specifier = ">=3.23.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "fastapi", marker = "extra == 'app'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.110" },
     { name = "gs-gmlip", extras = ["analytic", "mlip", "plumed", "dev", "app", "solvent", "matgl"], marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.13.0" },
@@ -873,6 +876,7 @@ requires-dist = [
     { name = "sphinx-autodoc-typehints", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "sphinx-rtd-theme", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "uvicorn", marker = "extra == 'app'", specifier = ">=0.29" },
+    { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.29" },
 ]
 provides-extras = ["analytic", "mlip", "plumed", "dev", "all", "app", "solvent", "matgl"]
 
