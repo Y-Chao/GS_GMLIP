@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-from io import StringIO
 from unittest.mock import patch
 
 from gs_gmlip.utils import (

@@ -34,9 +34,13 @@ uv run pytest tests/test_gcmc.py::test_insert_move -v
 uv run ruff format check gs_gmlip/ tests/
 uv run ruff check gs_gmlip/ tests/
 
-# CLI entry point (registered as `gs_gmlip = gs_gmlip.cli:main`)
-gs_gmlip --config config.yaml
+# Interactive app (needs the `app` extra: uv pip install -e ".[app]"; optional: `solvent`, `matgl`)
+uv run gs_gmlip app --project my_project        # http://127.0.0.1:8080
+# Run one job directory headless (what every executor calls)
+uv run gs_gmlip run-job my_project/jobs/<job_id>
 ```
+
+The package lives under `src/gs_gmlip/` (src layout).
 
 `deprecated/` is gitignored archived code — do not edit it. `examples/*/search/` directories are search outputs and are also gitignored; treat them as regenerable.
 
@@ -50,6 +54,29 @@ Five global-search methods share a single abstract interface; an evaluator abstr
 - [`BaseEvaluator`](gs_gmlip/evaluate/base.py) — wraps any ASE `Calculator` behind `get_calculator()`, plus `evaluate(atoms, relax=...)`, `relax(...)` (BFGS by default), and `batch_evaluate(...)`. Concrete: `MACEEvaluator`, `ASECalculatorEvaluator` (any ASE calc, e.g. EMT), `VASPEvaluator` (stub).
 
 A searcher is constructed with an evaluator instance — they are independently composable. The CLI ([`gs_gmlip/cli.py`](gs_gmlip/cli.py)) wires both from a YAML config via `build_evaluator(...)` and `build_searcher(...)`; each runner also has a `from_config(...)` classmethod.
+
+### Interactive app, store, and jobs
+
+Split of responsibilities: **JavaScript does interaction and rendering, Python does all chemistry.** The browser sends intents ("cleave this slab", "rotate these atoms", "run this task") and redraws from the JSON it gets back. The app never calls a searcher directly: an edit produces an `Interface`, the structure goes to the store, a `JobSpec` goes to an executor, a worker process runs the task and writes every intermediate structure back, and the frontend polls.
+
+- [`interface/operations.py`](src/gs_gmlip/interface/operations.py) -- all structure manipulation, done with pymatgen (`SlabGenerator`, `AdsorbateSiteFinder`, `SymmOp`): bulk, slab, sites, adsorbates, delete/substitute/move/rotate/fix, and ASE constraints (`FixBondLengths`, `FixSubsetCom`, `Hookean` wall). Functions are pure (return a new `Interface`); undo relies on that. Slabs are oriented a along x, normal along z, c perpendicular.
+- [`interface/solvation.py`](src/gs_gmlip/interface/solvation.py) -- Packmol water/solvent filling (`solvent` extra).
+- [`store.py`](src/gs_gmlip/store.py) -- `StructureStore` (ase.db SQLite + provenance: `stage`, `method`, `calc_name`, `parent_id`, `job_id`, `step`, `score`) and `Project` (`<root>/structures.db`, `<root>/jobs/<job_id>/`, `<root>/plugins/*.py`).
+- [`evaluator/calculators.py`](src/gs_gmlip/evaluator/calculators.py) -- calculator registry (`register_calculator`; built in: `emt`, `matgl`, `mace`, `vasp`). Default MatGL model: `TensorNet-PES-MatPES-r2SCAN-2025.2`.
+- [`evaluator/vasp.py`](src/gs_gmlip/evaluator/vasp.py) -- VASP inputs from pymatgen input sets (`VASP_PRESETS`), with tags layered set < precision < surface < dispersion < user settings.
+- [`jobs/`](src/gs_gmlip/jobs) -- `JobSpec`/`JobStatus`, tasks (`singlepoint`, `relax`, `cell_relax`, `nvt`, `npt`, `ga`, `gcmc`, `vasp_inputs`), `worker.py`, `LocalExecutor`. [`jobs/remote.py`](src/gs_gmlip/jobs/remote.py): `RemoteHost` (stored in `~/.gs_gmlip/hosts.json`), `RemoteExecutor` (SSH + scheduler: `pbs`, `shell`; each remote job is a self-contained mini project whose rows are merged back with remapped `parent_id`), `ProjectExecutor` (routes each job to local or its remote host; the session default). Tests use `LocalTransport`, so no SSH is needed. New schedulers are entries in `SCHEDULERS`; new execution back ends subclass `BaseExecutor`.
+- [`search/asop.py`](src/gs_gmlip/search/asop.py), [`search/minima_hopping.py`](src/gs_gmlip/search/minima_hopping.py) -- `ASOPRunner` (Chen, Shang, Liu, JCP 156, 094104 (2022): supercell grids, per-composition search, Monte Carlo selection; the inner search is minima hopping, not SSW, and there is no potential retraining; input is the clean primitive surface cell) and `MinimaHoppingRunner` (Goedecker 2004). Tasks `asop` and `minima_hopping`.
+- [`jobs/workflow.py`](src/gs_gmlip/jobs/workflow.py) -- `WorkflowEngine`: chains of steps with fan-out over input structures and parameter sweeps (`StepSpec.take` = last/best N/all, `sweep` with dotted parameter names). No daemon: state lives in `<project>/workflows/<id>/` and advances when `Session.jobs()` is polled or through `gs_gmlip run-workflow <dir>`.
+- [`app/bundle.py`](src/gs_gmlip/app/bundle.py) -- `gs_gmlip make-app` writes a macOS launcher bundle that runs the current environment; `--allow-quit` adds the in-app Quit button. `config.choose_folder` is the native macOS folder dialog used by the project list.
+- [`plugins.py`](src/gs_gmlip/plugins.py) -- plugin loading (entry-point group `gs_gmlip.plugins`, or `<project>/plugins/*.py`). A new search algorithm is a `BaseSearcher` subclass registered with `register_searcher`; a new engine is `register_calculator`; anything else is `register_task`.
+- [`interface/intermediates.py`](src/gs_gmlip/interface/intermediates.py), [`interface/molecules.py`](src/gs_gmlip/interface/molecules.py) -- seed electrocatalysis intermediates (HER/OER/ORR/CO2RR/CORR; initial-guess geometries derived from ASE G2, not literature structures) and the tiered `MoleculeLibrary`: temporary < project (`<project>/molecules.json`) < global (`~/.gs_gmlip/molecules.json`) < seed < built-in, first hit wins.
+- [`energetics.py`](src/gs_gmlip/energetics.py), [`importers.py`](src/gs_gmlip/importers.py) -- every stored structure carries a `role` (bulk, molecule, surface, adsorbed, other) and a `level` of theory (`code/xc/basis`, or `calculator/model`); `tags` hold the rest. Derived energies (formation, surface, adsorption, grand potential) are only computed between structures of the same level, with references looked up by role in the project store, then the global store (`~/.gs_gmlip/structures.db`). `import_ase_db` / `gs_gmlip import` normalizes foreign ASE databases into that schema.
+- [`config.py`](src/gs_gmlip/config.py) -- user-level directory (`~/.gs_gmlip`, or `GS_GMLIP_HOME`): global molecule library and recent projects. Tests isolate it through an autouse fixture.
+- [`app/session.py`](src/gs_gmlip/app/session.py) -- the server-side session: several `Workspace`s ("windows": bulk, surface, molecule), each with its own structure, undo, and store link; plus edits, jobs, ranking, provenance graph. No web framework, fully testable. Every API route takes the window id as the `ws` query parameter. All browser tabs on one server share this session.
+- [`app/server.py`](src/gs_gmlip/app/server.py) -- thin FastAPI JSON API over `Session` (`create_app`, `run_app`).
+- [`app/static/`](src/gs_gmlip/app/static) -- the frontend as plain ES modules, no build step: `viewer.js` (3Dmol.js surface viewer, drag move/rotate), `graph.js` (chart, provenance graph), `app.js` (tool column, panels). 3Dmol.js loads from a CDN.
+
+Frontend changes need no build; reload the page. When adding an edit operation, add it to `operations.py`, to the `handlers` map in `Session.edit`, and to `TOOLS` in `app.js`.
 
 ### Surface/adsorbate identification scheme
 

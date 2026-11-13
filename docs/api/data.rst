@@ -1,31 +1,32 @@
-Data Module
-===========
+Structure store and energetics
+==============================
 
-.. module:: gs_gmlip.data
+The provenance-aware structure database, derived energies, and the importer for external ASE databases.
 
-The data module provides database management, I/O utilities,
-and workflow coordination.
+Structure store
+---------------
 
-Database
---------
-
-.. autoclass:: gs_gmlip.data.database.CandidateDatabase
+.. automodule:: gs_gmlip.store
    :members:
+   :show-inheritance:
 
-.. autoclass:: gs_gmlip.data.database.PrepareDatabase
-   :members:
-
-I/O Utilities
--------------
-
-.. autofunction:: gs_gmlip.data.io.read_structures
-
-.. autofunction:: gs_gmlip.data.io.write_structures
-
-.. autofunction:: gs_gmlip.data.io.structures_to_db
-
-Workflow Manager
+Derived energies
 ----------------
 
-.. autoclass:: gs_gmlip.data.manager.WorkflowManager
+.. automodule:: gs_gmlip.energetics
    :members:
+   :show-inheritance:
+
+Importing external databases
+----------------------------
+
+.. automodule:: gs_gmlip.importers
+   :members:
+   :show-inheritance:
+
+User-level configuration
+------------------------
+
+.. automodule:: gs_gmlip.config
+   :members:
+   :show-inheritance:

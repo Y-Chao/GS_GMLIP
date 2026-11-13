@@ -104,7 +104,10 @@ class TestPopulation:
         best_count = 0
         for _ in range(50):
             cand = pop.get_one_candidate()
-            if cand is not None and cand.interface.get_potential_energy() == pytest.approx(-100.0):
+            if (
+                cand is not None
+                and cand.interface.get_potential_energy() == pytest.approx(-100.0)
+            ):
                 best_count += 1
         # Should be selected >20% (much more than uniform 20%)
         assert best_count > 10

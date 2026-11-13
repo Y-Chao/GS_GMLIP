@@ -1,29 +1,53 @@
-Interface Module
-================
+Structures and builders
+=======================
 
-.. module:: gs_gmlip.interface
-
-The interface module provides the central structure object for gs_gmlip:
-an :class:`~gs_gmlip.interface.core.Interface` couples a catalyst substrate
-with appended adsorbates and clusters in a single object. It is backed by
-pymatgen for surface analysis (neighbor-graph bonding, layer detection,
-adsorbate/cluster classification) and exposes a conversion, store, and
-slab-generator API on top of ASE Atoms.
+The ``Interface`` object (substrate plus adsorbates) and the pymatgen-based operations that build and edit it.
 
 Interface
 ---------
 
-.. autoclass:: gs_gmlip.interface.core.Interface
+.. automodule:: gs_gmlip.interface.core
    :members:
+   :show-inheritance:
 
-Analysis
---------
-
-.. automodule:: gs_gmlip.interface.analysis
-   :members:
-
-Builders
---------
+Slab construction
+-----------------
 
 .. automodule:: gs_gmlip.interface.builders
    :members:
+   :show-inheritance:
+
+Structure analysis
+------------------
+
+.. automodule:: gs_gmlip.interface.analysis
+   :members:
+   :show-inheritance:
+
+Building and editing operations
+-------------------------------
+
+.. automodule:: gs_gmlip.interface.operations
+   :members:
+   :show-inheritance:
+
+Solvent filling
+---------------
+
+.. automodule:: gs_gmlip.interface.solvation
+   :members:
+   :show-inheritance:
+
+Molecule library
+----------------
+
+.. automodule:: gs_gmlip.interface.molecules
+   :members:
+   :show-inheritance:
+
+Reaction intermediates
+----------------------
+
+.. automodule:: gs_gmlip.interface.intermediates
+   :members:
+   :show-inheritance:

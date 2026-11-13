@@ -7,18 +7,21 @@ A modular Python package for global structure searching of catalyst surfaces
 under working conditions, accelerated by machine learning interatomic potentials (MLIP).
 
 .. note::
-   GS_GMLIP provides five global search methods — GA, GCMC, GOFEE, SSW,
-   and Metadynamics — all with a unified interface and built on top of ASE.
+   Implemented search methods are the genetic algorithm (GA) and grand-canonical
+   Monte Carlo (GCMC). Further methods (GOFEE, SSW, minima hopping, metadynamics)
+   plug in through the ``BaseSearcher`` interface.
 
 Features
 --------
 
-- **Five search methods**: Genetic Algorithm, Grand Canonical Monte Carlo,
-  GOFEE (GPR-accelerated), Stochastic Surface Walking, Metadynamics
-- **MLIP acceleration**: MACE foundation model integration for fast energy/force evaluation
-- **Catalyst-focused**: Designed for slab/adsorbate systems with molecular identity preservation
-- **Unified interface**: All search methods share a common ``BaseSearcher`` API
-- **ASE-native**: Built on ASE Atoms, calculators, and database infrastructure
+- **Interactive app**: build bulk, surface, and molecule models in the browser,
+  run or prepare simulations, and browse every intermediate structure
+- **Search methods**: genetic algorithm and grand-canonical Monte Carlo behind a
+  common ``BaseSearcher`` API, extensible through plugins
+- **Any ASE calculator**: foundation potentials (MatGL, MACE), DFT (VASP), or
+  classical potentials through one calculator registry
+- **Catalyst-focused**: slab/adsorbate systems with molecular identity preservation
+- **Provenance**: every structure is stored with its origin, role, and level of theory
 
 Contents
 --------
@@ -34,12 +37,12 @@ Contents
    :maxdepth: 2
    :caption: API Reference
 
-   api/structure
    api/interface
    api/evaluate
    api/search
    api/data
-   api/analysis
+   api/jobs
+   api/app
    api/utils
 
 .. toctree::

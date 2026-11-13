@@ -13,6 +13,12 @@ from ase.io import read
 DATA = Path(__file__).parent / "data"
 
 
+@pytest.fixture(autouse=True)
+def isolated_gs_home(tmp_path_factory, monkeypatch):
+    """Point the user-level GS-GMLIP directory at a temp folder so tests never touch ~/.gs_gmlip."""
+    monkeypatch.setenv("GS_GMLIP_HOME", str(tmp_path_factory.mktemp("gs_home")))
+
+
 @pytest.fixture
 def cu100_slab() -> Atoms:
     """Cu(100) 4-layer slab from disk (144 atoms, pbc=[T,T,F])."""

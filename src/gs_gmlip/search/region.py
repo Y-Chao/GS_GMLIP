@@ -82,9 +82,11 @@ class SphereRegion(Region):
         r = self.radius * np.cbrt(u)  # uniform in volume
         theta = rng.uniform(0, 2 * np.pi)
         phi = np.arccos(2 * rng.random() - 1)
-        offset = np.array([
-            r * np.sin(phi) * np.cos(theta),
-            r * np.sin(phi) * np.sin(theta),
-            r * np.cos(phi),
-        ])
+        offset = np.array(
+            [
+                r * np.sin(phi) * np.cos(theta),
+                r * np.sin(phi) * np.sin(theta),
+                r * np.cos(phi),
+            ]
+        )
         return self.center + offset

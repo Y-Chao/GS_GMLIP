@@ -1,4 +1,5 @@
 """Tests for analytic_pes module."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -108,6 +109,7 @@ class TestAnalyticPESJAX:
         """JAX backend sets xp to jnp."""
         pes = AnalyticPES(name, use_jax=True)
         import jax.numpy as jnp
+
         assert pes.xp is jnp
 
     @pytest.mark.parametrize("name", PES_NAMES)

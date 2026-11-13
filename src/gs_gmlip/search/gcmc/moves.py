@@ -105,15 +105,23 @@ class InsertMove(MCMove):
         new_iface.add_adsorbate(mol)
 
         # Log proposal ratio: volume / (n_species + 1)
-        n_ads = sum(len(g) for g in new_iface.adsList) if hasattr(new_iface, 'adsList') else 1
+        n_ads = (
+            sum(len(g) for g in new_iface.adsList)
+            if hasattr(new_iface, "adsList")
+            else 1
+        )
         V = 1.0  # approximate; exact ratio needs region volume
         log_ratio = np.log(max(V, 1e-12)) - np.log(max(n_ads, 1))
 
-        return new_iface, log_ratio, {
-            "move": "insert",
-            "species": name,
-            "chemical_potential": mu,
-        }
+        return (
+            new_iface,
+            log_ratio,
+            {
+                "move": "insert",
+                "species": name,
+                "chemical_potential": mu,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +172,15 @@ class DeleteMove(MCMove):
         n_before = len(groups)
         log_ratio = np.log(max(n_before, 1))
 
-        return new_iface, log_ratio, {
-            "move": "delete",
-            "species": species_name,
-            "chemical_potential": mu,
-        }
+        return (
+            new_iface,
+            log_ratio,
+            {
+                "move": "delete",
+                "species": species_name,
+                "chemical_potential": mu,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -262,9 +274,13 @@ class SwapMove(MCMove):
         mu_old = self.chemical_potentials.get(current_symbol, 0.0)
         mu_new = self.chemical_potentials.get(new_symbol, 0.0)
 
-        return new_iface, 0.0, {
-            "move": "swap",
-            "old_species": current_symbol,
-            "new_species": new_symbol,
-            "chemical_potential": mu_new - mu_old,
-        }
+        return (
+            new_iface,
+            0.0,
+            {
+                "move": "swap",
+                "old_species": current_symbol,
+                "new_species": new_symbol,
+                "chemical_potential": mu_new - mu_old,
+            },
+        )

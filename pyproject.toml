@@ -8,32 +8,44 @@ license = { text = "MIT" }
 authors = [{ name = "Chao Yang" }]
 dependencies = [
     "ase>=3.23.0",
-    "jax>=0.4.30",
     "numpy>=1.26.0",
     "pandas>=2.2.0",
-    "plotly>=5.18.0",
     "pymatgen>=2024.0.0",
-    "pyyaml>=6.0",
     "rich>=15.0.0",
-    "ruff>=0.13.1",
-    "scikit-learn>=1.4.0",
     "scipy>=1.12.0",
 ]
 
 [project.optional-dependencies]
+# Automatic differentiation for the analytic test potentials (evaluator/analytic_pes.py).
+analytic = ["jax>=0.4.30"]
 mlip = ["mace-torch>=0.3.14"]
 plumed = ["plumed>=2.10.0"]
 dev = [
     "black>=24.0.0",
     "isort>=5.13.0",
     "pytest>=8.0.0",
-    "ruff>=0.3.0",
+    "httpx>=0.27",
+    # The app, so that its API tests run instead of being skipped.
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jax>=0.4.30",
+    "ruff>=0.13.1",
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=2.0.0",
     "sphinx-autodoc-typehints>=2.0.0",
     "nbsphinx>=0.9.0",
 ]
-all = ["gs-gmlip[mlip,plumed,dev]"]
+all = ["gs-gmlip[analytic,mlip,plumed,dev,app,solvent,matgl]"]
+app = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+solvent = [
+    "packmol>=21.2.3",
+]
+matgl = [
+    "matgl>=4.1.4",
+]
 
 [project.scripts]
 gs_gmlip = "gs_gmlip.cli:main"
@@ -46,6 +58,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 include = ["gs_gmlip*"]
 
+[tool.setuptools.package-data]
+gs_gmlip = ["app/static/*"]
+
 [tool.black]
 line-length = 88
 target-version = ["py312"]
@@ -56,6 +71,8 @@ line-length = 88
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E501"]
 

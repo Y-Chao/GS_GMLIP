@@ -42,7 +42,9 @@ def sphere_point_picking_constraint_z():
     return vector
 
 
-def find_point_on_line_within_distance(point: np.ndarray, ref_point: np.ndarray, distance: float):
+def find_point_on_line_within_distance(
+    point: np.ndarray, ref_point: np.ndarray, distance: float
+):
     """To find a point on the line defined by the point and the reference point that is within a certain distance from the
     reference point."""
     ...
@@ -88,10 +90,14 @@ def F_BLDA(template: Atoms, elem2: str | int, sigma: float = 0.1, scale: float =
         new_structure (Atoms): The generated structure with the new bond length.
     """
     if type(template) is not Atoms:
-        raise ValueError('The template structure must be an instance of the Atoms class.')
+        raise ValueError(
+            "The template structure must be an instance of the Atoms class."
+        )
 
     if len(template) == 0 and elem2 is None:
-        raise ValueError('The template structure is empty and the second element is not specified.')
+        raise ValueError(
+            "The template structure is empty and the second element is not specified."
+        )
 
     if len(template) == 0:
         if not np.all(template.cell):
@@ -103,9 +109,10 @@ def F_BLDA(template: Atoms, elem2: str | int, sigma: float = 0.1, scale: float =
         pos = np.dot(box_point_picking().T, box)
         template.append(elem2, positions=pos)
         return template
-    
-    com = template.get_center_of_mass()
-    random_vector = sphere_point_picking()
 
-    for i, elem1 in enumerate(template.get_chemical_symbols()):
-        
+    # Placement relative to a non-empty template is not written yet. The intended
+    # start was:
+    #     com = template.get_center_of_mass()
+    #     random_vector = sphere_point_picking()
+    #     for i, elem1 in enumerate(template.get_chemical_symbols()): ...
+    raise NotImplementedError("F_BLDA for a non-empty template is not implemented yet")

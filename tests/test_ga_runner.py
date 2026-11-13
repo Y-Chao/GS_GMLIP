@@ -79,16 +79,26 @@ class TestGARunner:
     def test_reproducibility(self, evaluator, substrate, blocks):
         """Same seed → same results."""
         r1 = GARunner(
-            evaluator=evaluator, substrate=substrate,
-            blocks=blocks, counts=[2],
-            population_size=5, n_initial=5,
-            fmax=0.5, relax_steps=20, seed=42,
+            evaluator=evaluator,
+            substrate=substrate,
+            blocks=blocks,
+            counts=[2],
+            population_size=5,
+            n_initial=5,
+            fmax=0.5,
+            relax_steps=20,
+            seed=42,
         )
         r2 = GARunner(
-            evaluator=evaluator, substrate=substrate,
-            blocks=blocks, counts=[2],
-            population_size=5, n_initial=5,
-            fmax=0.5, relax_steps=20, seed=42,
+            evaluator=evaluator,
+            substrate=substrate,
+            blocks=blocks,
+            counts=[2],
+            population_size=5,
+            n_initial=5,
+            fmax=0.5,
+            relax_steps=20,
+            seed=42,
         )
         r1.setup()
         r2.setup()

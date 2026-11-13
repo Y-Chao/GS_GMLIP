@@ -143,16 +143,17 @@ def test_classify_lone_nonmetal_no_metal_is_adsorbate():
 
 def test_classify_empty_returns_empty():
     from ase import Atoms as _A
+
     ads, clu = classify_appended(_A())
     assert ads == []
     assert clu == []
 
 
 def test_expected_bonds_closed_shell():
-    assert expected_bonds(1) == 1   # H -> |1-2|
-    assert expected_bonds(8) == 2   # O -> |8-10|
-    assert expected_bonds(7) == 3   # N -> |7-10|
-    assert expected_bonds(6) == 4   # C -> min(|6-2|,|6-10|)
+    assert expected_bonds(1) == 1  # H -> |1-2|
+    assert expected_bonds(8) == 2  # O -> |8-10|
+    assert expected_bonds(7) == 3  # N -> |7-10|
+    assert expected_bonds(6) == 4  # C -> min(|6-2|,|6-10|)
     assert expected_bonds(78) == 8  # Pt -> |78-86|
 
 
@@ -238,14 +239,14 @@ def test_fingerprint_is_deterministic_and_order_invariant():
 def test_classify_co_on_cu100_real_slab(cu100_with_co, cu100_slab):
     # Cu(100) + CO: appended is just the CO (indices in the FULL structure are after the slab).
     # classify_appended takes the appended region only; check it as if isolated.
-    appended = cu100_with_co[len(cu100_slab):]
+    appended = cu100_with_co[len(cu100_slab) :]
     ads, clu = classify_appended(appended)
     assert ads == [[0, 1]]
     assert clu == []
 
 
 def test_classify_two_co_on_cu100_two_adsorbate_groups(cu100_with_two_co, cu100_slab):
-    appended = cu100_with_two_co[len(cu100_slab):]
+    appended = cu100_with_two_co[len(cu100_slab) :]
     ads, clu = classify_appended(appended)
     assert sorted(ads) == [[0, 1], [2, 3]]
     assert clu == []
