@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.interface.solvation import (
+from gm2_surf.interface import operations as ops
+from gm2_surf.interface.solvation import (
     fill_solvent,
     fill_water,
     molecules_for_density,
@@ -98,6 +98,6 @@ def test_fill_water_errors(slab):
 
 
 def test_missing_packmol_is_reported(slab, monkeypatch):
-    monkeypatch.setattr("gs_gmlip.interface.solvation.shutil.which", lambda name: None)
+    monkeypatch.setattr("gm2_surf.interface.solvation.shutil.which", lambda name: None)
     with pytest.raises(RuntimeError, match="packmol executable not found"):
         fill_water(slab)

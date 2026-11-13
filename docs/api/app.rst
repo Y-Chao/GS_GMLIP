@@ -6,19 +6,19 @@ The server side of the interactive app: the session that holds the windows, the 
 Session
 -------
 
-.. automodule:: gs_gmlip.app.session
+.. automodule:: gm2_surf.app.session
    :members:
    :show-inheritance:
 
 Viewer scene
 ------------
 
-.. automodule:: gs_gmlip.app.scene
+.. automodule:: gm2_surf.app.scene
    :members:
    :show-inheritance:
 
 JSON API server
 ---------------
 
-``gs_gmlip.app.server`` is a thin FastAPI layer over the session (``create_app``,
+``gm2_surf.app.server`` is a thin FastAPI layer over the session (``create_app``,
 ``run_app``); it needs the ``app`` extra and is therefore not auto-documented here.

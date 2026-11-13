@@ -1,4 +1,4 @@
-"""Tests for gs_gmlip.interface.builders."""
+"""Tests for gm2_surf.interface.builders."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from ase.build import bulk
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 
-from gs_gmlip.interface.builders import primitive_slab_from_bulk, slab_from_bulk
+from gm2_surf.interface.builders import primitive_slab_from_bulk, slab_from_bulk
 
 
 def test_slab_from_bulk_returns_atoms_with_vacuum():

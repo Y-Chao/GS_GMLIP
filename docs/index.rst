@@ -1,7 +1,7 @@
-GS_GMLIP Documentation
+GM2-Surf Documentation
 ======================
 
-**Global Searching by Global Machine Learning Interatomic Potential**
+**Global Minimum search with Global Machine-Learning interatomic potentials, for Surfaces**
 
 A modular Python package for global structure searching of catalyst surfaces
 under working conditions, accelerated by machine learning interatomic potentials (MLIP).

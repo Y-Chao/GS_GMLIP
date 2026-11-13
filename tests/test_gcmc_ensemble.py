@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.search.gcmc.ensemble import GCEnsemble
+from gm2_surf.search.gcmc.ensemble import GCEnsemble
 
 
 class TestGCEnsemble:

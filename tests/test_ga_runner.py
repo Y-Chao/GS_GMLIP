@@ -6,9 +6,9 @@ import pytest
 from ase import Atoms
 from ase.calculators.emt import EMT
 
-from gs_gmlip.evaluator.base import BaseEvaluator
-from gs_gmlip.interface.core import Interface
-from gs_gmlip.search.ga.runner import GARunner
+from gm2_surf.evaluator.base import BaseEvaluator
+from gm2_surf.interface.core import Interface
+from gm2_surf.search.ga.runner import GARunner
 
 
 class EMTEvaluator(BaseEvaluator):

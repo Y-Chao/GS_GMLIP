@@ -11,10 +11,10 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from gs_gmlip.app.server import STATIC_DIR, create_app  # noqa: E402
-from gs_gmlip.app.session import Session  # noqa: E402
-from gs_gmlip.interface.operations import describe_constraints as ops_constraints  # noqa: E402
-from gs_gmlip.store import Project  # noqa: E402
+from gm2_surf.app.server import STATIC_DIR, create_app  # noqa: E402
+from gm2_surf.app.session import Session  # noqa: E402
+from gm2_surf.interface.operations import describe_constraints as ops_constraints  # noqa: E402
+from gm2_surf.store import Project  # noqa: E402
 
 BULK, SURFACE, MOLECULE = "bulk-1", "surface-1", "molecule-1"
 
@@ -68,7 +68,7 @@ def _wait(client, timeout=120.0):
 
 def test_frontend_files_are_served_uncached(client):
     response = client.get("/")
-    assert response.status_code == 200 and "GS-GMLIP" in response.text
+    assert response.status_code == 200 and "GM2-Surf" in response.text
     for name in ("app.js", "viewer.js", "graph.js", "style.css"):
         assert (STATIC_DIR / name).is_file()
         served = client.get(f"/static/{name}")
@@ -342,8 +342,8 @@ def test_global_references_load_and_drive_energetics(client):
     from ase.build import bulk as ase_bulk
     from ase.calculators.emt import EMT
 
-    from gs_gmlip.importers import to_interface
-    from gs_gmlip.store import global_store
+    from gm2_surf.importers import to_interface
+    from gm2_surf.store import global_store
 
     cu = ase_bulk("Cu", "fcc", a=3.59, cubic=True)
     cu.calc = EMT()
@@ -352,9 +352,8 @@ def test_global_references_load_and_drive_energetics(client):
         to_interface(cu), stage="imported", role="bulk", level="emt", label="EMT Cu"
     )
 
-    (reference,) = client.get("/api/references", params={"role": "bulk"}).json()[
-        "references"
-    ]
+    listed = client.get("/api/references", params={"role": "bulk"}).json()["references"]
+    (reference,) = [item for item in listed if item["scope"] != "builtin"]
     assert (reference["scope"], reference["formula"], reference["level"]) == (
         "global",
         "Cu4",
@@ -824,7 +823,7 @@ def test_session_without_server(tmp_path):
 
 def test_quit_is_only_offered_when_enabled(client):
     assert client.get("/api/meta").json()["can_quit"] is False
-    assert client.get("/api/meta").json()["app"] == "gs_gmlip"
+    assert client.get("/api/meta").json()["app"] == "gm2_surf"
     assert client.post("/api/quit").status_code == 403
     stopped = []
     client.app.state.quit = lambda: stopped.append(True)
@@ -837,7 +836,7 @@ def test_macos_app_bundle(tmp_path):
     import plistlib
     import sys
 
-    from gs_gmlip.app.bundle import build_macos_app
+    from gm2_surf.app.bundle import build_macos_app
 
     if sys.platform != "darwin":
         with pytest.raises(RuntimeError, match="macOS"):
@@ -846,18 +845,21 @@ def test_macos_app_bundle(tmp_path):
     bundle = build_macos_app(
         tmp_path, python="/some/env with space/bin/python", port=8123
     )
-    assert bundle == tmp_path.resolve() / "GS-GMLIP.app"
+    assert bundle == tmp_path.resolve() / "GM2-Surf.app"
     info = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
-    assert info["CFBundleExecutable"] == "GS-GMLIP" and info["LSUIElement"] is True
-    launcher = bundle / "Contents" / "MacOS" / "GS-GMLIP"
+    assert info["CFBundleExecutable"] == "GM2-Surf" and info["LSUIElement"] is True
+    assert (
+        bundle / "Contents" / "Resources" / info["CFBundleIconFile"]
+    ).stat().st_size > 10_000
+    launcher = bundle / "Contents" / "MacOS" / "GM2-Surf"
     text = launcher.read_text()
     assert "PYTHON='/some/env with space/bin/python'" in text
-    assert "-m gs_gmlip.cli app --port 8123 --allow-quit" in text
+    assert "-m gm2_surf.cli app --port 8123 --allow-quit" in text
     assert launcher.stat().st_mode & 0o111
 
 
 def test_run_app_reuses_a_running_app(monkeypatch):
-    from gs_gmlip.app import server
+    from gm2_surf.app import server
 
     opened = []
     monkeypatch.setattr(server, "_port_free", lambda host, port: False)
@@ -865,3 +867,54 @@ def test_run_app_reuses_a_running_app(monkeypatch):
     monkeypatch.setattr("webbrowser.open", opened.append)
     server.run_app(port=8080)  # returns instead of starting a second server
     assert opened == ["http://127.0.0.1:8080"]
+
+
+def test_app_without_a_project_writes_nothing_until_one_is_chosen(
+    tmp_path, monkeypatch
+):
+    from gm2_surf.config import gm2_home
+
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(create_app(None))
+    meta = client.get("/api/meta").json()
+    assert meta["ask_project"] and meta["project"] == "" and meta["app"] == "gm2_surf"
+    assert client.get("/api/state").status_code == 409
+    assert client.get("/api/records").status_code == 409
+    assert list(tmp_path.iterdir()) == []  # no default project folder appears
+    assert not (gm2_home() / "structures.db").exists()
+
+    project = tmp_path / "chosen"
+    opened = client.post("/api/project", json={"path": str(project)}).json()
+    assert opened["project"] == str(project.resolve()) and not opened["ask_project"]
+    assert client.get("/api/state").status_code == 200
+    assert not client.get("/api/meta").json()["ask_project"]
+
+
+def test_structures_reach_the_global_store_only_when_added(client):
+    from gm2_surf.config import gm2_home
+    from gm2_surf.store import global_store
+
+    assert (
+        post(
+            client,
+            "/api/bulk/create",
+            BULK,
+            {"element": "Cu", "lattice": "fcc", "a": 3.61},
+        ).status_code
+        == 200
+    )
+    structure_id = post(client, "/api/save", BULK, {"label": "ref"}).json()[
+        "current_id"
+    ]
+    assert not (gm2_home() / "structures.db").exists()  # saving stays in the project
+
+    copied = client.post("/api/records/to-global", json={"ids": [structure_id]}).json()[
+        "copied"
+    ]
+    rows = global_store().records()
+    assert [rec.id for rec in rows] == [copied[str(structure_id)]]
+    assert rows[0].tags["source_id"] == structure_id and rows[0].label == "ref"
+    again = client.post("/api/records/to-global", json={"ids": [structure_id]}).json()[
+        "copied"
+    ]
+    assert again == copied and len(global_store()) == 1  # not duplicated

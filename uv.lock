@@ -784,7 +784,7 @@ wheels = [
 ]
 
 [[package]]
-name = "gs-gmlip"
+name = "gm2-surf"
 version = "1.1.0"
 source = { editable = "." }
 dependencies = [
@@ -855,7 +855,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "fastapi", marker = "extra == 'app'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.110" },
-    { name = "gs-gmlip", extras = ["analytic", "mlip", "plumed", "dev", "app", "solvent", "matgl"], marker = "extra == 'all'" },
+    { name = "gm2-surf", extras = ["analytic", "mlip", "plumed", "dev", "app", "solvent", "matgl"], marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.13.0" },
     { name = "jax", marker = "extra == 'analytic'", specifier = ">=0.4.30" },

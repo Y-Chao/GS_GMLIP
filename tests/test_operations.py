@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.interface import operations as ops
+from gm2_surf.interface import operations as ops
 
 
 @pytest.fixture(scope="module")

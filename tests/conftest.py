@@ -14,9 +14,9 @@ DATA = Path(__file__).parent / "data"
 
 
 @pytest.fixture(autouse=True)
-def isolated_gs_home(tmp_path_factory, monkeypatch):
-    """Point the user-level GS-GMLIP directory at a temp folder so tests never touch ~/.gs_gmlip."""
-    monkeypatch.setenv("GS_GMLIP_HOME", str(tmp_path_factory.mktemp("gs_home")))
+def isolated_gm2_home(tmp_path_factory, monkeypatch):
+    """Point the user-level GM2-Surf directory at a temp folder so tests never touch ~/.gm2_surf."""
+    monkeypatch.setenv("GM2_SURF_HOME", str(tmp_path_factory.mktemp("gm2_home")))
 
 
 @pytest.fixture

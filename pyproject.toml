@@ -1,7 +1,7 @@
 [project]
-name = "gs-gmlip"
+name = "gm2-surf"
 version = "1.1.0"
-description = "Global Searching by Global Machine Learning Interatomic Potential"
+description = "Global Minimum search with Global Machine-Learning interatomic potentials, for Surfaces"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -35,7 +35,7 @@ dev = [
     "sphinx-autodoc-typehints>=2.0.0",
     "nbsphinx>=0.9.0",
 ]
-all = ["gs-gmlip[analytic,mlip,plumed,dev,app,solvent,matgl]"]
+all = ["gm2-surf[analytic,mlip,plumed,dev,app,solvent,matgl]"]
 app = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
@@ -48,7 +48,8 @@ matgl = [
 ]
 
 [project.scripts]
-gs_gmlip = "gs_gmlip.cli:main"
+gm2_surf = "gm2_surf.cli:main"
+gm2-surf = "gm2_surf.cli:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
@@ -56,10 +57,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["gs_gmlip*"]
+include = ["gm2_surf*"]
 
 [tool.setuptools.package-data]
-gs_gmlip = ["app/static/*"]
+gm2_surf = ["app/static/*", "database/*.jsonl"]
 
 [tool.black]
 line-length = 88

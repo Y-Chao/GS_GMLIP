@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete the `Interface` class — the central structure object for `gs_gmlip` representing a catalyst substrate + adsorbates/clusters, with pymatgen-backed surface analysis, adsorbate/cluster classification, cached derived data, and a conversion/store/generator API.
+**Goal:** Complete the `Interface` class — the central structure object for `gm2_surf` representing a catalyst substrate + adsorbates/clusters, with pymatgen-backed surface analysis, adsorbate/cluster classification, cached derived data, and a conversion/store/generator API.
 
-**Architecture:** Composition wrapper — `Interface` *has* two ASE `Atoms` (`substrate`, `interface`); it does not subclass `Atoms`. Pure pymatgen math lives in free-function modules (`analysis.py`, `builders.py`); the class (`core.py`) owns state, `cached_property` caching with manual reset, mutation, and I/O. `interface.py` becomes the `interface/` package; the public import path `from gs_gmlip.interface import Interface` is preserved via `__init__.py`.
+**Architecture:** Composition wrapper — `Interface` *has* two ASE `Atoms` (`substrate`, `interface`); it does not subclass `Atoms`. Pure pymatgen math lives in free-function modules (`analysis.py`, `builders.py`); the class (`core.py`) owns state, `cached_property` caching with manual reset, mutation, and I/O. `interface.py` becomes the `interface/` package; the public import path `from gm2_surf.interface import Interface` is preserved via `__init__.py`.
 
 **Tech Stack:** Python ≥3.12, ASE, pymatgen (new required dep), networkx (transitive via pymatgen), numpy, pytest.
 
@@ -22,8 +22,8 @@
 ## File Structure
 
 ```
-src/gs_gmlip/interface/
-├── __init__.py      # re-export: from gs_gmlip.interface.core import Interface
+src/gm2_surf/interface/
+├── __init__.py      # re-export: from gm2_surf.interface.core import Interface
 ├── constants.py     # CLOSED_SHELLS, DEFAULT_* tunables
 ├── analysis.py      # pure fns: is_metal, build_neighbor_graph, connected_components,
 │                    #           classify_appended, compute_bondmatrix,
@@ -39,7 +39,7 @@ tests/
 └── test_interface_core.py       # Interface class
 ```
 
-The current `src/gs_gmlip/interface.py` is deleted (its `__init__`/validation logic moves into `core.py`, the skeleton method bodies are filled in). The current `tests/test_interface.py` (empty stub) is replaced by the three files above.
+The current `src/gm2_surf/interface.py` is deleted (its `__init__`/validation logic moves into `core.py`, the skeleton method bodies are filled in). The current `tests/test_interface.py` (empty stub) is replaced by the three files above.
 
 ---
 
@@ -47,10 +47,10 @@ The current `src/gs_gmlip/interface.py` is deleted (its `__init__`/validation lo
 
 **Files:**
 - Modify: `pyproject.toml` (dependencies list, lines ~9-20)
-- Delete: `src/gs_gmlip/interface.py`
-- Create: `src/gs_gmlip/interface/__init__.py`
-- Create: `src/gs_gmlip/interface/constants.py`
-- Create: `src/gs_gmlip/interface/core.py` (placeholder Interface so import works)
+- Delete: `src/gm2_surf/interface.py`
+- Create: `src/gm2_surf/interface/__init__.py`
+- Create: `src/gm2_surf/interface/constants.py`
+- Create: `src/gm2_surf/interface/core.py` (placeholder Interface so import works)
 
 - [ ] **Step 1: Add pymatgen to dependencies**
 
@@ -63,11 +63,11 @@ In `pyproject.toml`, add to the `dependencies` array (keep alphabetical-ish orde
 - [ ] **Step 2: Remove the old single-file module and create the package**
 
 ```bash
-git rm src/gs_gmlip/interface.py
-mkdir -p src/gs_gmlip/interface
+git rm src/gm2_surf/interface.py
+mkdir -p src/gm2_surf/interface
 ```
 
-Create `src/gs_gmlip/interface/constants.py`:
+Create `src/gm2_surf/interface/constants.py`:
 
 ```python
 """Tunable constants for the Interface structure model."""
@@ -97,7 +97,7 @@ DEFAULT_CLUSTER_MIN_SIZE = 1
 DEFAULT_LAYER_TOL = 0.5
 ```
 
-Create `src/gs_gmlip/interface/core.py`:
+Create `src/gm2_surf/interface/core.py`:
 
 ```python
 """The Interface class: central structure object (substrate + adsorbates/clusters)."""
@@ -109,14 +109,14 @@ class Interface:
     """Placeholder; implemented across later tasks."""
 ```
 
-Create `src/gs_gmlip/interface/__init__.py`:
+Create `src/gm2_surf/interface/__init__.py`:
 
 ```python
-"""Interface package: the central structure object for gs_gmlip."""
+"""Interface package: the central structure object for gm2_surf."""
 
 from __future__ import annotations
 
-from gs_gmlip.interface.core import Interface
+from gm2_surf.interface.core import Interface
 
 __all__ = ["Interface"]
 ```
@@ -128,13 +128,13 @@ Expected: pymatgen resolves and installs; no errors.
 
 - [ ] **Step 4: Verify the import path is preserved**
 
-Run: `.venv/bin/python -c "from gs_gmlip.interface import Interface; print(Interface)"`
-Expected: prints `<class 'gs_gmlip.interface.core.Interface'>`
+Run: `.venv/bin/python -c "from gm2_surf.interface import Interface; print(Interface)"`
+Expected: prints `<class 'gm2_surf.interface.core.Interface'>`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml src/gs_gmlip/interface/
+git add pyproject.toml src/gm2_surf/interface/
 git commit -m "feat: scaffold interface package, add pymatgen dependency"
 ```
 
@@ -143,7 +143,7 @@ git commit -m "feat: scaffold interface package, add pymatgen dependency"
 ### Task 1: `is_metal` and neighbor-graph helpers (analysis.py)
 
 **Files:**
-- Create: `src/gs_gmlip/interface/analysis.py`
+- Create: `src/gm2_surf/interface/analysis.py`
 - Test: `tests/test_interface_analysis.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -151,14 +151,14 @@ git commit -m "feat: scaffold interface package, add pymatgen dependency"
 Create `tests/test_interface_analysis.py`:
 
 ```python
-"""Tests for gs_gmlip.interface.analysis."""
+"""Tests for gm2_surf.interface.analysis."""
 
 from __future__ import annotations
 
 import numpy as np
 from ase import Atoms
 
-from gs_gmlip.interface.analysis import (
+from gm2_surf.interface.analysis import (
     build_neighbor_graph,
     connected_components,
     is_metal,
@@ -205,7 +205,7 @@ Expected: FAIL — `ModuleNotFoundError` / `ImportError` (analysis.py functions 
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `src/gs_gmlip/interface/analysis.py`:
+Create `src/gm2_surf/interface/analysis.py`:
 
 ```python
 """Pure structure-analysis functions backing the Interface class.
@@ -222,7 +222,7 @@ from ase import Atoms
 from ase.data import atomic_numbers, covalent_radii
 from pymatgen.core import Element
 
-from gs_gmlip.interface.constants import BOND_SCALE
+from gm2_surf.interface.constants import BOND_SCALE
 
 
 def is_metal(symbol: str) -> bool:
@@ -265,7 +265,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/analysis.py tests/test_interface_analysis.py
+git add src/gm2_surf/interface/analysis.py tests/test_interface_analysis.py
 git commit -m "feat: add is_metal and neighbor-graph helpers"
 ```
 
@@ -274,7 +274,7 @@ git commit -m "feat: add is_metal and neighbor-graph helpers"
 ### Task 2: `classify_appended` — adsorbate/cluster split
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/analysis.py`
+- Modify: `src/gm2_surf/interface/analysis.py`
 - Test: `tests/test_interface_analysis.py`
 
 This implements the spec's final classification rule. Atoms passed in are the
@@ -286,7 +286,7 @@ to that sub-Atoms (caller offsets by `n_substrate`).
 Append to `tests/test_interface_analysis.py`:
 
 ```python
-from gs_gmlip.interface.analysis import classify_appended
+from gm2_surf.interface.analysis import classify_appended
 
 
 def _pt4():
@@ -350,10 +350,10 @@ Expected: FAIL — `ImportError: cannot import name 'classify_appended'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `src/gs_gmlip/interface/analysis.py`:
+Append to `src/gm2_surf/interface/analysis.py`:
 
 ```python
-from gs_gmlip.interface.constants import DEFAULT_CLUSTER_MIN_SIZE
+from gm2_surf.interface.constants import DEFAULT_CLUSTER_MIN_SIZE
 
 
 def _component_has_metal(atoms: Atoms, indices: list[int]) -> bool:
@@ -423,7 +423,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/analysis.py tests/test_interface_analysis.py
+git add src/gm2_surf/interface/analysis.py tests/test_interface_analysis.py
 git commit -m "feat: add adsorbate/cluster classification (classify_appended)"
 ```
 
@@ -432,7 +432,7 @@ git commit -m "feat: add adsorbate/cluster classification (classify_appended)"
 ### Task 3: `compute_bondmatrix` and `compute_possible_bond`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/analysis.py`
+- Modify: `src/gm2_surf/interface/analysis.py`
 - Test: `tests/test_interface_analysis.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -440,7 +440,7 @@ git commit -m "feat: add adsorbate/cluster classification (classify_appended)"
 Append to `tests/test_interface_analysis.py`:
 
 ```python
-from gs_gmlip.interface.analysis import (
+from gm2_surf.interface.analysis import (
     compute_bondmatrix,
     compute_possible_bond,
     expected_bonds,
@@ -488,10 +488,10 @@ Expected: FAIL — import errors for `compute_bondmatrix` etc.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `src/gs_gmlip/interface/analysis.py`:
+Append to `src/gm2_surf/interface/analysis.py`:
 
 ```python
-from gs_gmlip.interface.constants import CLOSED_SHELLS
+from gm2_surf.interface.constants import CLOSED_SHELLS
 
 
 def compute_bondmatrix(atoms: Atoms, bond_scale: float = BOND_SCALE) -> np.ndarray:
@@ -536,7 +536,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/analysis.py tests/test_interface_analysis.py
+git add src/gm2_surf/interface/analysis.py tests/test_interface_analysis.py
 git commit -m "feat: add bondmatrix and possible_bond (closed-shell valence heuristic)"
 ```
 
@@ -545,7 +545,7 @@ git commit -m "feat: add bondmatrix and possible_bond (closed-shell valence heur
 ### Task 4: `detect_layers` and `fingerprint`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/analysis.py`
+- Modify: `src/gm2_surf/interface/analysis.py`
 - Test: `tests/test_interface_analysis.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -553,7 +553,7 @@ git commit -m "feat: add bondmatrix and possible_bond (closed-shell valence heur
 Append to `tests/test_interface_analysis.py`:
 
 ```python
-from gs_gmlip.interface.analysis import detect_layers, fingerprint
+from gm2_surf.interface.analysis import detect_layers, fingerprint
 
 
 def test_detect_layers_three_layers():
@@ -579,10 +579,10 @@ Expected: FAIL — import errors.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `src/gs_gmlip/interface/analysis.py`:
+Append to `src/gm2_surf/interface/analysis.py`:
 
 ```python
-from gs_gmlip.interface.constants import DEFAULT_LAYER_TOL
+from gm2_surf.interface.constants import DEFAULT_LAYER_TOL
 
 
 def detect_layers(atoms: Atoms, tol: float = DEFAULT_LAYER_TOL) -> np.ndarray:
@@ -632,7 +632,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/analysis.py tests/test_interface_analysis.py
+git add src/gm2_surf/interface/analysis.py tests/test_interface_analysis.py
 git commit -m "feat: add layer detection and structural fingerprint"
 ```
 
@@ -641,7 +641,7 @@ git commit -m "feat: add layer detection and structural fingerprint"
 ### Task 5: `builders.py` — slab from bulk
 
 **Files:**
-- Create: `src/gs_gmlip/interface/builders.py`
+- Create: `src/gm2_surf/interface/builders.py`
 - Test: `tests/test_interface_builders.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -649,14 +649,14 @@ git commit -m "feat: add layer detection and structural fingerprint"
 Create `tests/test_interface_builders.py`:
 
 ```python
-"""Tests for gs_gmlip.interface.builders."""
+"""Tests for gm2_surf.interface.builders."""
 
 from __future__ import annotations
 
 from ase import Atoms
 from ase.build import bulk
 
-from gs_gmlip.interface.builders import primitive_slab_from_bulk, slab_from_bulk
+from gm2_surf.interface.builders import primitive_slab_from_bulk, slab_from_bulk
 
 
 def test_slab_from_bulk_returns_atoms_with_vacuum():
@@ -683,7 +683,7 @@ Expected: FAIL — `ModuleNotFoundError` for builders.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `src/gs_gmlip/interface/builders.py`:
+Create `src/gm2_surf/interface/builders.py`:
 
 ```python
 """Pure slab-construction functions backed by pymatgen's SlabGenerator."""
@@ -763,7 +763,7 @@ Expected: PASS (2 tests). If `get_orthogonal_c_slab()` raises for a given cell, 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/builders.py tests/test_interface_builders.py
+git add src/gm2_surf/interface/builders.py tests/test_interface_builders.py
 git commit -m "feat: add slab builders from bulk (pymatgen SlabGenerator)"
 ```
 
@@ -772,7 +772,7 @@ git commit -m "feat: add slab builders from bulk (pymatgen SlabGenerator)"
 ### Task 6: `Interface.__init__` + validation + `__repr__`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 Ports the skeleton's `__init__` logic, adapting it to **grouped** ads/cluster
@@ -792,7 +792,7 @@ import pytest
 from ase import Atoms
 from ase.constraints import FixAtoms
 
-from gs_gmlip.interface import Interface
+from gm2_surf.interface import Interface
 
 
 def _slab():
@@ -844,7 +844,7 @@ Expected: FAIL — placeholder Interface has no `substrate` attribute.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Replace `src/gs_gmlip/interface/core.py` with:
+Replace `src/gm2_surf/interface/core.py` with:
 
 ```python
 """The Interface class: central structure object (substrate + adsorbates/clusters)."""
@@ -856,8 +856,8 @@ from typing import Optional
 from ase import Atoms
 from ase.constraints import FixAtoms
 
-from gs_gmlip.interface.analysis import classify_appended
-from gs_gmlip.interface.constants import (
+from gm2_surf.interface.analysis import classify_appended
+from gm2_surf.interface.constants import (
     DEFAULT_CELL_EDGE,
     DEFAULT_CLUSTER_MIN_SIZE,
 )
@@ -962,7 +962,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: implement Interface __init__, validation, classification wiring"
 ```
 
@@ -971,7 +971,7 @@ git commit -m "feat: implement Interface __init__, validation, classification wi
 ### Task 7: Cached properties + `_reset_cache`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1014,7 +1014,7 @@ from functools import cached_property
 and import the analysis functions:
 
 ```python
-from gs_gmlip.interface.analysis import (
+from gm2_surf.interface.analysis import (
     classify_appended,
     compute_bondmatrix,
     compute_possible_bond,
@@ -1062,7 +1062,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add cached_property derived data and _reset_cache"
 ```
 
@@ -1071,7 +1071,7 @@ git commit -m "feat: add cached_property derived data and _reset_cache"
 ### Task 8: Surface methods — `get_substrate_layers`, `fix_substrate`, builders
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1120,7 +1120,7 @@ Add to imports in `core.py`:
 
 ```python
 import numpy as np
-from gs_gmlip.interface.builders import primitive_slab_from_bulk, slab_from_bulk
+from gm2_surf.interface.builders import primitive_slab_from_bulk, slab_from_bulk
 ```
 
 Add/replace these methods on `Interface`:
@@ -1197,7 +1197,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add layer count, fix_substrate, build_from_bulk surface methods"
 ```
 
@@ -1206,7 +1206,7 @@ git commit -m "feat: add layer count, fix_substrate, build_from_bulk surface met
 ### Task 9: Mutating geometry methods — `wrap`, `align_interface`, `center`/`bottom`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1289,7 +1289,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add wrap and align_interface mutating methods"
 ```
 
@@ -1298,7 +1298,7 @@ git commit -m "feat: add wrap and align_interface mutating methods"
 ### Task 10: Conversion API — `to_ase`/`from_ase`, `to_pymatgen`/`from_pymatgen`, `to_dict`/`from_dict`, `copy`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1449,7 +1449,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add conversion API (ase/pymatgen/dict) and copy"
 ```
 
@@ -1458,7 +1458,7 @@ git commit -m "feat: add conversion API (ase/pymatgen/dict) and copy"
 ### Task 11: Store API — `write`/`read`, `write_db`/`from_db_row`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1523,14 +1523,14 @@ db row `data=` dict (for ase.db):
     def write(self, path: str, **kwargs) -> None:
         """Write the interface to any ASE-supported format, embedding metadata in info."""
         atoms = self.interface.copy()
-        atoms.info["gs_gmlip_interface"] = self._metadata()
+        atoms.info["gm2_surf_interface"] = self._metadata()
         ase_write(path, atoms, **kwargs)
 
     @classmethod
     def read(cls, path: str, **kwargs) -> "Interface":
         """Read an interface written by Interface.write."""
         atoms = ase_read(path, **kwargs)
-        meta = atoms.info.get("gs_gmlip_interface", {})
+        meta = atoms.info.get("gm2_surf_interface", {})
         n = meta.get("n_substrate", len(atoms))
         return cls(
             substrate=atoms[:n],
@@ -1578,7 +1578,7 @@ Expected: PASS (2 tests). If `db_roundtrip` fails on list-vs-array equality, app
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add store API (write/read, ase.db)"
 ```
 
@@ -1587,7 +1587,7 @@ git commit -m "feat: add store API (write/read, ase.db)"
 ### Task 12: Generator hooks — `add_adsorbate`, `remove_group`, `view`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1673,7 +1673,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add generator hooks (add_adsorbate, remove_group, view)"
 ```
 
@@ -1682,7 +1682,7 @@ git commit -m "feat: add generator hooks (add_adsorbate, remove_group, view)"
 ### Task 13: Phase-2 stubs — `find_all_ads_sites`, `find_simple_ads_sites`, `identify_symmetry`
 
 **Files:**
-- Modify: `src/gs_gmlip/interface/core.py`
+- Modify: `src/gm2_surf/interface/core.py`
 - Test: `tests/test_interface_core.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1737,7 +1737,7 @@ Expected: PASS (1 test).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/gs_gmlip/interface/core.py tests/test_interface_core.py
+git add src/gm2_surf/interface/core.py tests/test_interface_core.py
 git commit -m "feat: add Phase-2 surface-method stubs (NotImplementedError)"
 ```
 
@@ -1757,7 +1757,7 @@ Create `docs/api/interface.rst`:
 Interface Module
 ================
 
-.. module:: gs_gmlip.interface
+.. module:: gm2_surf.interface
 
 The central structure object: a substrate (clean slab) plus an interface
 (slab + adsorbates/clusters), with pymatgen-backed surface analysis and a
@@ -1766,20 +1766,20 @@ conversion/store/generator API.
 Interface
 ---------
 
-.. autoclass:: gs_gmlip.interface.core.Interface
+.. autoclass:: gm2_surf.interface.core.Interface
    :members:
    :undoc-members:
 
 Analysis functions
 ------------------
 
-.. automodule:: gs_gmlip.interface.analysis
+.. automodule:: gm2_surf.interface.analysis
    :members:
 
 Builders
 --------
 
-.. automodule:: gs_gmlip.interface.builders
+.. automodule:: gm2_surf.interface.builders
    :members:
 ```
 
@@ -1798,7 +1798,7 @@ Expected: ALL PASS (analysis + builders + core; plus existing test_utils).
 
 - [ ] **Step 4: Lint**
 
-Run: `unset VIRTUAL_ENV && uv run ruff check src/gs_gmlip/interface/ tests/test_interface_*.py`
+Run: `unset VIRTUAL_ENV && uv run ruff check src/gm2_surf/interface/ tests/test_interface_*.py`
 Expected: no errors (fix any reported issues, e.g. import order, unused imports).
 
 - [ ] **Step 5: Commit**
