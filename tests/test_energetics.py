@@ -10,13 +10,13 @@ from ase.calculators.emt import EMT
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.constraints import FixAtoms
 
-from gs_gmlip import energetics
-from gs_gmlip.cli import main as cli_main
-from gs_gmlip.evaluator import level_of_theory
-from gs_gmlip.importers import import_ase_db, infer_role, level_from_row, to_interface
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import JobSpec, run_task
-from gs_gmlip.store import Project, StructureStore, global_store
+from gm2_surf import energetics
+from gm2_surf.cli import main as cli_main
+from gm2_surf.evaluator import level_of_theory
+from gm2_surf.importers import import_ase_db, infer_role, level_from_row, to_interface
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import JobSpec, run_task
+from gm2_surf.store import Project, StructureStore, global_store
 
 
 def evaluated(atoms):
@@ -223,7 +223,7 @@ def test_functional_comes_from_calculator_settings(tmp_path):
 
 
 def test_canonical_functional_names():
-    from gs_gmlip.importers import canonical_xc
+    from gm2_surf.importers import canonical_xc
 
     names = ("pbe", "PBE", "rpbe-d3", "beef-vdw", "r2scan", "hse06", "MGGA_X_R2SCAN")
     expected = ["PBE", "PBE", "RPBE-D3", "BEEF-vdW", "r2SCAN", "HSE06", "MGGA_X_R2SCAN"]
@@ -304,13 +304,18 @@ def test_import_normalizes_and_is_repeatable(source_db, tmp_path):
 
 
 def test_import_command_writes_to_the_global_store(source_db, capsys):
-    assert cli_main(["import", str(source_db), "--role", "bulk"]) == 0
+    assert (
+        cli_main(["import", str(source_db), "--role", "bulk"]) == 2
+    )  # no implicit target
+    assert "--project DIR or --global" in capsys.readouterr().err
+    assert global_store().records() == []
+    assert cli_main(["import", str(source_db), "--role", "bulk", "--global"]) == 0
     assert "imported 3" in capsys.readouterr().out
     assert [r.role for r in global_store().records()] == ["bulk"] * 3
 
 
 def test_import_command_reports_a_missing_file_without_a_traceback(capsys):
-    assert cli_main(["import", "path/to/file.db"]) == 1
+    assert cli_main(["import", "path/to/file.db", "--global"]) == 1
     assert "no such database: path/to/file.db" in capsys.readouterr().err
     assert global_store().records() == []
 

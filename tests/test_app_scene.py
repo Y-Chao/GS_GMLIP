@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from gs_gmlip.app.scene import atom_role, build_scene, element_color, find_bonds
-from gs_gmlip.interface import operations as ops
+from gm2_surf.app.scene import atom_role, build_scene, element_color, find_bonds
+from gm2_surf.interface import operations as ops
 
 
 @pytest.fixture(scope="module")

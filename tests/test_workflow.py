@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import LocalExecutor, StepSpec, WorkflowEngine, WorkflowSpec
-from gs_gmlip.store import Project
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import LocalExecutor, StepSpec, WorkflowEngine, WorkflowSpec
+from gm2_surf.store import Project
 
 FAST = {"steps": 3, "write_interval": 3}
 
@@ -169,7 +169,7 @@ def test_workflow_api(tmp_path):
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from gs_gmlip.app.server import create_app
+    from gm2_surf.app.server import create_app
 
     client = TestClient(create_app(tmp_path / "proj"))
     assert client.get("/api/meta").json()["workflow_take"] == ["last", "best", "all"]
@@ -223,7 +223,7 @@ def test_workflow_api(tmp_path):
 
 
 def test_choose_folder(monkeypatch, tmp_path):
-    from gs_gmlip import config
+    from gm2_surf import config
 
     calls = []
 

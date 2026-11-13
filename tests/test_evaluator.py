@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from ase.calculators.emt import EMT
 
-from gs_gmlip.evaluator.base import BaseEvaluator
-from gs_gmlip.interface.core import Interface
+from gm2_surf.evaluator.base import BaseEvaluator
+from gm2_surf.interface.core import Interface
 
 
 class EMTEvaluator(BaseEvaluator):

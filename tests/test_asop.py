@@ -8,11 +8,11 @@ import numpy as np
 import pytest
 from ase.constraints import FixAtoms
 
-from gs_gmlip.evaluator.calculators import CalculatorEvaluator
-from gs_gmlip.interface import operations as ops
-from gs_gmlip.jobs import TASKS, JobSpec, run_task
-from gs_gmlip.search.asop import ASOPRunner, Phase, enumerate_supercells
-from gs_gmlip.store import Project
+from gm2_surf.evaluator.calculators import CalculatorEvaluator
+from gm2_surf.interface import operations as ops
+from gm2_surf.jobs import TASKS, JobSpec, run_task
+from gm2_surf.search.asop import ASOPRunner, Phase, enumerate_supercells
+from gm2_surf.store import Project
 
 SQUARE = np.diag([2.5, 2.5, 20.0])
 HEXAGONAL = np.array(

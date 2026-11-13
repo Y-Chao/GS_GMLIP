@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gs_gmlip.interface.core import Interface
-from gs_gmlip.search.ga.operators import (
+from gm2_surf.interface.core import Interface
+from gm2_surf.search.ga.operators import (
     CutAndSpliceCrossover,
     MirrorMutation,
     OperationSelector,

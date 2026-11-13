@@ -6,48 +6,48 @@ The ``Interface`` object (substrate plus adsorbates) and the pymatgen-based oper
 Interface
 ---------
 
-.. automodule:: gs_gmlip.interface.core
+.. automodule:: gm2_surf.interface.core
    :members:
    :show-inheritance:
 
 Slab construction
 -----------------
 
-.. automodule:: gs_gmlip.interface.builders
+.. automodule:: gm2_surf.interface.builders
    :members:
    :show-inheritance:
 
 Structure analysis
 ------------------
 
-.. automodule:: gs_gmlip.interface.analysis
+.. automodule:: gm2_surf.interface.analysis
    :members:
    :show-inheritance:
 
 Building and editing operations
 -------------------------------
 
-.. automodule:: gs_gmlip.interface.operations
+.. automodule:: gm2_surf.interface.operations
    :members:
    :show-inheritance:
 
 Solvent filling
 ---------------
 
-.. automodule:: gs_gmlip.interface.solvation
+.. automodule:: gm2_surf.interface.solvation
    :members:
    :show-inheritance:
 
 Molecule library
 ----------------
 
-.. automodule:: gs_gmlip.interface.molecules
+.. automodule:: gm2_surf.interface.molecules
    :members:
    :show-inheritance:
 
 Reaction intermediates
 ----------------------
 
-.. automodule:: gs_gmlip.interface.intermediates
+.. automodule:: gm2_surf.interface.intermediates
    :members:
    :show-inheritance:

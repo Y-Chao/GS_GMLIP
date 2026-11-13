@@ -1,22 +1,22 @@
-"""Tests for gs_gmlip.interface.analysis."""
+"""Tests for gm2_surf.interface.analysis."""
 
 from __future__ import annotations
 
 import numpy as np
 from ase import Atoms
 
-from gs_gmlip.interface.analysis import (
+from gm2_surf.interface.analysis import (
     build_neighbor_graph,
     connected_components,
     is_metal,
 )
-from gs_gmlip.interface.analysis import classify_appended
-from gs_gmlip.interface.analysis import (
+from gm2_surf.interface.analysis import classify_appended
+from gm2_surf.interface.analysis import (
     compute_bondmatrix,
     compute_possible_bond,
     expected_bonds,
 )
-from gs_gmlip.interface.analysis import detect_layers, fingerprint
+from gm2_surf.interface.analysis import detect_layers, fingerprint
 
 
 def test_is_metal():

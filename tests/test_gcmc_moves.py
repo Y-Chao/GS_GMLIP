@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from gs_gmlip.interface.core import Interface
-from gs_gmlip.search.gcmc.moves import DeleteMove, DisplaceMove, InsertMove, SwapMove
-from gs_gmlip.search.region import BoxRegion
+from gm2_surf.interface.core import Interface
+from gm2_surf.search.gcmc.moves import DeleteMove, DisplaceMove, InsertMove, SwapMove
+from gm2_surf.search.region import BoxRegion
 
 
 class TestInsertMove:

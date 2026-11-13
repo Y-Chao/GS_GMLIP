@@ -6,6 +6,6 @@ Console output helpers.
 Printing
 --------
 
-.. automodule:: gs_gmlip.utils
+.. automodule:: gm2_surf.utils
    :members:
    :show-inheritance:
