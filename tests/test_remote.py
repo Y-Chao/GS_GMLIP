@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import sys
 import time
 
@@ -223,6 +225,62 @@ def test_pbs_script():
     )
     assert host.root == "$HOME/gm2_surf_jobs"
     assert SCHEDULERS["pbs"].submit.format(script="run.sh") == "qsub run.sh"
+
+
+def test_slurm_script():
+    host = RemoteHost(
+        name="gpu",
+        host="gpu",
+        scheduler="slurm",
+        queue="v100g32",
+        account="A1",
+        resources="--nodes=1 --gres=gpu:1 --cpus-per-task=3 --mem=30G",
+        walltime="04:00:00",
+        directives=["--qos=debug"],
+        setup=["module load cuda"],
+    )
+    job_id = "relax-20261112-101010-abcdef"
+    lines = RemoteExecutor(None, host)._script(host, job_id, "/work/u/j").splitlines()
+    assert lines[0] == "#!/bin/bash"
+    for directive in (
+        f"#SBATCH --job-name={job_id}",
+        "#SBATCH --output=/work/u/j/scheduler.log",
+        "#SBATCH --partition=v100g32",
+        "#SBATCH --account=A1",
+        "#SBATCH --nodes=1 --gres=gpu:1 --cpus-per-task=3 --mem=30G",
+        "#SBATCH --time=04:00:00",
+        "#SBATCH --qos=debug",
+    ):
+        assert directive in lines
+    assert not any(line.startswith("#PBS") for line in lines)
+    # Directives must come before the first command, or sbatch ignores them.
+    first_command = next(
+        i for i, line in enumerate(lines[1:], 1) if line and not line.startswith("#")
+    )
+    assert (
+        max(i for i, line in enumerate(lines) if line.startswith("#SBATCH"))
+        < first_command
+    )
+    slurm = SCHEDULERS["slurm"]
+    assert slurm.submit.format(script="run.sh") == "sbatch --parsable run.sh"
+    assert re.search(slurm.id_pattern, "4821733;c2").group(0) == "4821733"
+    assert slurm.cancel.format(id="4821733") == "scancel 4821733"
+
+
+@pytest.mark.parametrize(
+    ("queue_output", "alive"),
+    [("4821733\n", True), ("", False)],
+)
+def test_slurm_alive_needs_a_listed_job(tmp_path, queue_output, alive):
+    """A job is alive only while squeue prints it (squeue exits 0 for a finished job too)."""
+    fake = tmp_path / "squeue"
+    fake.write_text(f"#!/bin/bash\nprintf '%s' {queue_output!r}\n")
+    fake.chmod(0o755)
+    command = f"PATH={tmp_path}:$PATH; if {SCHEDULERS['slurm'].alive.format(id='4821733')} > /dev/null 2>&1; then echo alive; else echo gone; fi"
+    done = subprocess.run(
+        ["bash", "-c", command], capture_output=True, text=True, check=True
+    )
+    assert done.stdout.strip() == ("alive" if alive else "gone")
 
 
 @pytest.mark.parametrize(
