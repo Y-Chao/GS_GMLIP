@@ -1,0 +1,10 @@
+job,runs,success,median_steps,median_calls,p90_calls,worst_gap_eV,median_wall_s,expected_mean,mean,variance,total_variation
+cu4_ga,12,9,27.0,1399.0,3993.0000000000005,0.2466,13.4,,,,
+cu4_minima_hopping,12,9,42.0,8731.0,10367.4,0.2404,34.75,,,,
+cu6_ga,12,6,5.5,1003.5,1775.0,0.0154,23.200000000000003,,,,
+cu6_minima_hopping,12,4,34.0,7189.5,7426.1,0.2284,54.25,,,,
+gcmc_ideal_CO,1,,,,,,,3.0,3.051,3.151,0.009
+gcmc_ideal_Cu,1,,,,,,,3.0,2.952,2.918,0.008
+gcmc_ideal_He,1,,,,,,,3.0,3.036,2.964,0.013
+lj13_minima_hopping,12,12,25.5,1527.5,2019.3,0.0,0.8,,,,
+lj38_minima_hopping,12,3,489.0,78731.0,91601.4,0.7941,157.05,,,,

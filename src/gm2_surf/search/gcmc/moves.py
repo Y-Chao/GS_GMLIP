@@ -1,5 +1,12 @@
 """Monte Carlo move classes for grand canonical ensemble.
 
+Proposal ratios follow one convention: a particle is an adsorbate or cluster
+group, an insertion picks one of ``S`` species and a position, and a deletion
+picks one of the ``N`` groups present. The insertion volume is taken as one
+(V = 1 Å^3, no thermal wavelength), so a non-interacting species has a mean
+occupation of ``exp(mu / kT)``; the chemical potentials given to the runner
+absorb the factor ``kT ln(V / Lambda^3)``.
+
 Implements Insert, Delete, Swap, and Displace moves. Each move
 proposes a new configuration and returns the log proposal ratio
 needed for detailed-balance correction in the Metropolis step.
@@ -12,6 +19,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 from ase import Atoms
+from ase.symbols import string2symbols
 
 from gm2_surf.interface.core import Interface
 from gm2_surf.search.region import Region
@@ -104,14 +112,11 @@ class InsertMove(MCMove):
         new_iface = interface.copy()
         new_iface.add_adsorbate(mol)
 
-        # Log proposal ratio: volume / (n_species + 1)
-        n_ads = (
-            sum(len(g) for g in new_iface.adsList)
-            if hasattr(new_iface, "adsList")
-            else 1
-        )
-        V = 1.0  # approximate; exact ratio needs region volume
-        log_ratio = np.log(max(V, 1e-12)) - np.log(max(n_ads, 1))
+        # Forward: one of S species (position density 1); reverse: one of the
+        # N + 1 groups present after the insertion. Groups, not atoms, and
+        # clusters included, exactly as the delete move counts them.
+        n_after = len(new_iface.adsList) + len(new_iface.clusterList)
+        log_ratio = np.log(len(self.blocks)) - np.log(max(n_after, 1))
 
         return (
             new_iface,
@@ -138,10 +143,30 @@ class DeleteMove(MCMove):
     ----------
     chemical_potentials : dict[str, float]
         Species name → chemical potential (eV), used for acceptance.
+    blocks : list[Atoms], optional
+        The insertable species; with *block_names* they identify a removed
+        group by its composition. Without them a species name is read as a
+        chemical formula.
+    block_names : list[str], optional
+        Names corresponding to *blocks*.
     """
 
-    def __init__(self, chemical_potentials: dict[str, float] | None = None):
+    def __init__(
+        self,
+        chemical_potentials: dict[str, float] | None = None,
+        blocks: list[Atoms] | None = None,
+        block_names: list[str] | None = None,
+    ):
         self.chemical_potentials = chemical_potentials or {}
+        self.n_species = max(len(blocks or []), 1)
+        self._compositions: dict[str, list[str]] = {}
+        for name in self.chemical_potentials:
+            try:
+                self._compositions[name] = sorted(string2symbols(name))
+            except (ValueError, KeyError):  # not a chemical formula
+                continue
+        for block, name in zip(blocks or [], block_names or []):
+            self._compositions[name] = sorted(block.get_chemical_symbols())
 
     def propose(
         self, interface: Interface, rng: np.random.Generator
@@ -158,9 +183,9 @@ class DeleteMove(MCMove):
         symbols = sorted(interface.interface.symbols[i] for i in group)
         species_name = "".join(symbols)
         mu = 0.0
-        for name, pot in self.chemical_potentials.items():
-            if sorted(name) == symbols:
-                mu = pot
+        for name, composition in self._compositions.items():
+            if composition == symbols and name in self.chemical_potentials:
+                mu = self.chemical_potentials[name]
                 species_name = name
                 break
 
@@ -168,9 +193,9 @@ class DeleteMove(MCMove):
         new_iface = interface.copy()
         new_iface.remove_group(group)
 
-        # Log proposal ratio: n_before / 1
+        # Forward: one of the N groups; reverse: one of S species (position density 1).
         n_before = len(groups)
-        log_ratio = np.log(max(n_before, 1))
+        log_ratio = np.log(max(n_before, 1)) - np.log(self.n_species)
 
         return (
             new_iface,

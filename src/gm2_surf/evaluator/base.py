@@ -82,7 +82,7 @@ class BaseEvaluator(ABC):
 
     def _relax(self, atoms, fmax: float, steps: int) -> None:
         """Run BFGS relaxation on *atoms* (mutated in-place)."""
-        dyn = BFGS(atoms)
+        dyn = BFGS(atoms, logfile=None)
         try:
             dyn.run(fmax=fmax, steps=steps)
         except Exception:

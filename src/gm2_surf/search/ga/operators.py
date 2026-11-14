@@ -212,6 +212,15 @@ class CutAndSpliceCrossover(OffspringCreator):
 
             if not sel1 or not sel2:
                 continue
+            # The offspring must have the parents' composition: a cut that
+            # takes too few or too many atoms of an element is discarded.
+            numbers1 = a1.get_atomic_numbers()
+            numbers2 = a2.get_atomic_numbers()
+            taken = sorted(
+                [int(numbers1[i]) for i in sel1] + [int(numbers2[i]) for i in sel2]
+            )
+            if taken != sorted(int(numbers1[i]) for i in idx1):
+                continue
 
             # Build offspring: start from p1, remove all appended, re-add selections
             offspring = p1.copy()

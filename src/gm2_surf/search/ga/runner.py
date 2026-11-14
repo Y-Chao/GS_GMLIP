@@ -32,6 +32,21 @@ from gm2_surf.search.region import BoxRegion, Region
 logger = logging.getLogger(__name__)
 
 
+def _blocks_apart(
+    interface: Interface, n_new: int, blmin: dict[tuple[int, int], float]
+) -> bool:
+    """Whether the last ``n_new`` atoms keep the ``blmin`` distances to the other appended atoms."""
+    atoms = interface.interface
+    numbers = atoms.get_atomic_numbers()
+    new = range(len(atoms) - n_new, len(atoms))
+    for i in new:
+        for j in range(len(interface.substrate), len(atoms) - n_new):
+            limit = blmin.get((int(numbers[i]), int(numbers[j])))
+            if limit is not None and atoms.get_distance(i, j, mic=True) < limit:
+                return False
+    return True
+
+
 class GARunner(BaseSearcher):
     """Genetic Algorithm for global structure searching on surfaces.
 
@@ -66,6 +81,9 @@ class GARunner(BaseSearcher):
         Force convergence for relaxation.
     relax_steps : int
         Maximum relaxation steps.
+    energy_tolerance : float
+        Two candidates are duplicates only if their energies differ by less
+        than this (eV) and their fingerprints match.
     seed : int, optional
         Random seed.
     """
@@ -85,9 +103,11 @@ class GARunner(BaseSearcher):
         operator_weights: list[float] | None = None,
         fmax: float = 0.05,
         relax_steps: int = 200,
+        energy_tolerance: float = 0.02,
         seed: int | None = None,
     ):
         super().__init__(evaluator, workdir, seed)
+        self.energy_tolerance = float(energy_tolerance)
         self.substrate_template = substrate
         self.blocks = blocks
         self.counts = counts
@@ -107,7 +127,9 @@ class GARunner(BaseSearcher):
             self.region = BoxRegion(
                 cell=slab.get_cell(),
                 z_min=z_max + 1.5,
-                z_max=z_max + 8.0,
+                # Within reach of the surface: an atom placed beyond the range
+                # of the potential feels no force and never lands.
+                z_max=z_max + 4.0,
             )
 
         # --- blmin ---
@@ -140,6 +162,11 @@ class GARunner(BaseSearcher):
         # --- State ---
         self.population: Population | None = None
         self._n_appended = sum(c * len(b) for b, c in zip(blocks, counts))
+        self._composition = sorted(
+            int(number)
+            for block, count in zip(blocks, counts)
+            for number in list(block.get_atomic_numbers()) * count
+        )
 
     # ------------------------------------------------------------------
     # BaseSearcher interface
@@ -200,6 +227,8 @@ class GARunner(BaseSearcher):
         offspring = op.get_new_individual(parents)
         if offspring is None:
             return {"status": "operator_failed", "operator": op.descriptor}
+        if not self._has_composition(offspring):
+            return {"status": "wrong_composition", "operator": op.descriptor}
 
         # Evaluate
         try:
@@ -226,26 +255,49 @@ class GARunner(BaseSearcher):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _generate_random(self) -> Interface | None:
-        """Generate one random individual by placing blocks in the region."""
+    def _generate_random(self, max_attempts: int = 100) -> Interface | None:
+        """Generate one random individual by placing blocks in the region.
+
+        A block is placed again if it comes closer to an already placed block
+        than ``blmin`` allows; ``None`` is returned if no free spot is found.
+        """
         iface = self.substrate_template.copy()
         for block, count in zip(self.blocks, self.counts):
             for _ in range(count):
-                pos = self.region.random_position(self.rng)
-                mol = block.copy()
-                # Random rotation for multi-atom blocks
-                if len(mol) > 1:
-                    angle = self.rng.uniform(0, 360)
-                    axis = self.rng.normal(0, 1, 3)
-                    axis /= np.linalg.norm(axis)
-                    mol.rotate(angle, axis)
-                mol.translate(pos - mol.get_center_of_mass())
-                iface.add_adsorbate(mol)
+                for _ in range(max_attempts):
+                    pos = self.region.random_position(self.rng)
+                    mol = block.copy()
+                    # Random rotation for multi-atom blocks
+                    if len(mol) > 1:
+                        angle = self.rng.uniform(0, 360)
+                        axis = self.rng.normal(0, 1, 3)
+                        axis /= np.linalg.norm(axis)
+                        mol.rotate(angle, axis)
+                    mol.translate(pos - mol.get_center_of_mass())
+                    trial = iface.copy()
+                    trial.add_adsorbate(mol)
+                    if _blocks_apart(trial, len(mol), self.blmin):
+                        iface = trial
+                        break
+                else:
+                    return None
         return iface
 
-    @staticmethod
-    def _looks_like(a: Interface, b: Interface) -> bool:
-        """Deduplication: compare structural fingerprints."""
+    def _has_composition(self, candidate: Interface) -> bool:
+        """Whether the appended atoms of ``candidate`` are the requested blocks."""
+        numbers = candidate.interface.get_atomic_numbers()[len(candidate.substrate) :]
+        return sorted(int(number) for number in numbers) == self._composition
+
+    def _looks_like(self, a: Interface, b: Interface) -> bool:
+        """Deduplication: same energy within the tolerance and matching fingerprints.
+
+        The fingerprint of a slab with a few adsorbates is dominated by the
+        slab, so fingerprints alone make distinct candidates look identical.
+        """
+        energy_a = a.interface.get_potential_energy()
+        energy_b = b.interface.get_potential_energy()
+        if abs(energy_a - energy_b) > self.energy_tolerance:
+            return False
         fp_a = a.fingerprint
         fp_b = b.fingerprint
         if len(fp_a) != len(fp_b):
