@@ -329,16 +329,16 @@
       <label title="An alias from ~/.ssh/config, or user@host">SSH destination<input id="host-host" placeholder="vanda"></label>
       <label>Scheduler<select id="host-scheduler"></select></label>
       <label title="One sub-directory per job is created here">Remote directory<input id="host-root" value="~/gm2_surf_jobs"></label>
-      <label>Queue<input id="host-queue" placeholder="auto_free"></label>
-      <label title="Project or account to charge (#PBS -P)">Account<input id="host-account"></label>
-      <label title="#PBS -l …">Resources<input id="host-resources" placeholder="select=1:ncpus=16:mem=64gb"></label>
+      <label title="PBS queue or Slurm partition">Queue<input id="host-queue" placeholder="auto_free"></label>
+      <label title="Project or account to charge (#PBS -P, #SBATCH --account)">Account<input id="host-account"></label>
+      <label title="PBS: the -l value, e.g. select=1:ncpus=36:mpiprocs=36:mem=64gb. Slurm: sbatch options, e.g. --nodes=1 --gres=gpu:1 --cpus-per-task=3 --mem=30G">Resources<input id="host-resources" placeholder="select=1:ncpus=36:mpiprocs=36:mem=64gb"></label>
       <label>Wall time<input id="host-walltime" placeholder="02:00:00"></label>
       <label title="Seconds between two synchronisations of a running job">Sync every (s)<input id="host-sync" type="number" min="1" step="1" value="15"></label>
     </div>
     <label title="The job directory is appended">Worker command<input id="host-command" value="gm2_surf run-job"></label>
     <label title="Shell lines run before the worker, one per line">Environment setup
       <textarea id="host-setup" rows="3" placeholder="module use ~/apps/modulefiles&#10;module load vasp/6.6.1-vd-cpu"></textarea></label>
-    <label title="Further scheduler directives, one per line, without #PBS">Extra directives
+    <label title="Further scheduler directives, one per line, without #PBS or #SBATCH">Extra directives
       <textarea id="host-directives" rows="2"></textarea></label>
     <div id="host-check" class="muted"></div>
     <div class="row">

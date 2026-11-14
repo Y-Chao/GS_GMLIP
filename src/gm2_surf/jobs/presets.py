@@ -4,11 +4,13 @@ A preset fills the entries of the Hosts dialog (scheduler, directory, queue,
 resources, wall time, worker command, environment setup); the user-specific
 part (SSH alias, user name, project code) comes from ``~/.ssh/config`` and
 the dialog. Site facts follow the sites' public documentation and the
-author's cluster notes (checked 2026-11): default resources are a small
-slice of one node, software lives in ``~/apps/<code>``, and VASP builds are
+author's cluster notes (checked 2026-11-13): default resources are the
+smallest unit the site favours (a whole chunk on Vanda, a quarter node on
+ASPIRE 2A), software lives in ``~/apps/<code>``, and VASP builds are
 registered as modules ``vasp/<version>-<build>`` under ``~/apps/modulefiles``.
 
-Only PBS sites are listed, because ``SCHEDULERS`` has no Slurm entry yet.
+PBS sites request resources as a ``-l select=...`` value, Slurm sites as
+``sbatch`` options.
 """
 
 from __future__ import annotations
@@ -37,8 +39,9 @@ class HostPreset:
         alias: Regular expression searched in the alias itself.
         scratch: Directory that receives the job directory; ``{user}`` is the
             SSH user of the alias.
-        queue: Queue to submit to.
-        resources: PBS ``-l`` request.
+        queue: Queue (PBS) or partition (Slurm) to submit to.
+        resources: PBS ``-l`` request, or ``sbatch`` options on Slurm.
+        scheduler: Key of ``SCHEDULERS``.
         walltime: Wall-time limit.
         setup: Shell lines run before the worker. Lines starting with ``#``
             are reminders of what the user still has to provide.
@@ -52,6 +55,7 @@ class HostPreset:
     scratch: str
     queue: str
     resources: str
+    scheduler: str = "pbs"
     walltime: str = "02:00:00"
     setup: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
@@ -78,15 +82,16 @@ HOST_PRESETS: dict[str, HostPreset] = {
             scratch="/scratch/{user}",
             # Execution queues only take jobs from the routing queues (auto, auto_free, autox).
             queue="auto_free",
-            resources="select=1:ncpus=16:mem=64gb",
-            setup=_vasp_setup(
-                "vasp/6.6.1-vd-cpu",
-                "# export VASP_PP_PATH=<directory holding potpaw_PBE>  (only H and Si smoke-test POTCARs are installed)",
-            ),
+            # One whole 36-core chunk: partial chunks are not accepted.
+            resources="select=1:ncpus=36:mpiprocs=36:mem=64gb",
+            setup=_vasp_setup("vasp/6.6.1-vd-cpu", "export VASP_PP_PATH=~/apps/vasp"),
             notes=(
                 "NUS VPN off campus; login nodes are for files and job submission only.",
-                "Limits: wall time <= 168 h; about 8 running jobs.",
-                "/scratch/<user> is 500 GB; files idle for 60 days may be purged.",
+                "Limits: wall time <= 240 h on CPU nodes, 168 h on GPU nodes; about 8 running jobs.",
+                "Allocation unit: a 36-core chunk (2 per node, up to 250 GB each); request whole chunks only, "
+                "e.g. select=2:ncpus=36:mpiprocs=36 with place=pack for a full node.",
+                "/scratch/<user> is 500 GB; files idle for 60 days may be purged. With a project allocation, "
+                "set Remote directory to the project scratch.",
                 "VASP 6.6.1 (CPU; DFT-D4, simple-DFT-D3, Libxc, libbeef, VTST, plugins). No GPU VASP.",
             ),
         ),
@@ -97,10 +102,13 @@ HOST_PRESETS: dict[str, HostPreset] = {
             alias=r"aspire[-_]?2a|^(asp|nscc[-_]?)?2a$|^nscc$",
             scratch="~/scratch",
             queue="normal",
-            resources="select=1:ncpus=16:mpiprocs=16:mem=64gb",
+            # A quarter of a 128-core node.
+            resources="select=1:ncpus=32:mpiprocs=32:mem=64gb",
             setup=_vasp_setup("vasp/6.6.1-as-cpu", "export VASP_PP_PATH=~/apps/vasp"),
             notes=(
                 "NUS VPN off campus. Jobs are rejected without an Account (NSCC project ID, #PBS -P).",
+                "CPU nodes have 128 cores: a quarter node (32) for molecules and small structures, a full node "
+                "(ncpus=128:mpiprocs=128, higher priority) for larger ones.",
                 "Limits: wall time <= 24 h; about 90 running jobs.",
                 "GitHub answers 403 on the cluster: copy sources from this Mac.",
                 "VASP 6.6.1 CPU (vasp/6.6.1-as-cpu) and GPU (vasp/6.6.1-as-gpu, one A100: ncpus=16:ngpus=1).",
@@ -132,6 +140,24 @@ HOST_PRESETS: dict[str, HostPreset] = {
             notes=(
                 "Limits: wall time <= 144 h. GPU workloads only; do not send CPU-only jobs.",
                 "Set Account to the NUS HPC project allocation code (#PBS -P).",
+            ),
+        ),
+        HostPreset(
+            name="menggu",
+            description="ChinaHPC menggu (Slurm; GPU nodes 8x V100, 24 cores/250 GB; CPU nodes 40 cores)",
+            hostname=r"^menggu",
+            alias=r"menggu",
+            scratch="~/work",
+            scheduler="slurm",
+            queue="v100g32",
+            # One GPU with the partition's share of the node (3 cores and 30 GB per GPU).
+            resources="--nodes=1 --gres=gpu:1 --cpus-per-task=3 --mem=30G",
+            walltime="04:00:00",
+            notes=(
+                "No internet on any node: stage the Python environment and the model weights from this machine.",
+                "GPU partitions: v100g32 (V100 32 GB), v100 and v100m3; no wall-time limit.",
+                "CPU partition p1 takes whole 40-core nodes only: --nodes=1 --ntasks-per-node=40 --mem=190000M.",
+                "VASP 6.6.1 modules under ~/apps/modulefiles: vasp/6.6.1-mg-cpu and vasp/6.6.1-mg-gpu.",
             ),
         ),
     )
@@ -214,7 +240,7 @@ def host_presets(
             {
                 "name": preset.name,
                 "host": alias or preset.name,
-                "scheduler": "pbs",
+                "scheduler": preset.scheduler,
                 "remote_root": f"{scratch}/{JOB_DIRECTORY}",
                 "command": WORKER_COMMAND,
                 "setup": list(preset.setup),

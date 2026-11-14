@@ -10,7 +10,7 @@ from gm2_surf.jobs.presets import (
     host_presets,
     ssh_aliases,
 )
-from gm2_surf.jobs.remote import RemoteHost
+from gm2_surf.jobs.remote import SCHEDULERS, RemoteHost
 
 SSH = {
     "vanda": {"hostname": "vanda.nus.edu.sg", "user": "e0123456"},
@@ -30,7 +30,7 @@ def test_presets_match_ssh_aliases_and_fill_user_paths(presets):
     assert vanda["remote_root"] == "/scratch/e0123456/gm2_surf_jobs"
     assert (vanda["queue"], vanda["resources"], vanda["walltime"]) == (
         "auto_free",
-        "select=1:ncpus=16:mem=64gb",
+        "select=1:ncpus=36:mpiprocs=36:mem=64gb",
         "02:00:00",
     )
     assert (aspire["host"], aspire["queue"]) == (
@@ -63,6 +63,27 @@ def test_vasp_environment_comes_from_the_registered_module(presets):
     assert presets["hopper"]["setup"] == []  # GPU-only site, no VASP build
 
 
+def test_slurm_preset_requests_one_gpu():
+    menggu = {
+        item["name"]: item
+        for item in host_presets(["menggu"], lambda alias: {"user": "u"})
+    }["menggu"]
+    assert (menggu["scheduler"], menggu["queue"], menggu["configured"]) == (
+        "slurm",
+        "v100g32",
+        True,
+    )
+    assert menggu["remote_root"] == "~/work/gm2_surf_jobs"
+    assert (
+        "--gres=gpu:1" in menggu["resources"] and "select=" not in menggu["resources"]
+    )
+    host = RemoteHost.from_dict(menggu)
+    assert any(
+        line.startswith("#SBATCH --partition=v100g32")
+        for line in SCHEDULERS["slurm"].header(host, "j", "/d")
+    )
+
+
 def test_every_configured_preset_is_a_valid_host(presets):
     assert set(presets) == set(HOST_PRESETS)
     for item in presets.values():
@@ -70,7 +91,9 @@ def test_every_configured_preset_is_a_valid_host(presets):
             continue
         host = RemoteHost.from_dict(item)
         assert (
-            host.scheduler == "pbs" and host.command == WORKER_COMMAND and host.walltime
+            host.scheduler in SCHEDULERS
+            and host.command == WORKER_COMMAND
+            and host.walltime
         )
 
 

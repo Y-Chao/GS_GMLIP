@@ -103,9 +103,37 @@ class _PBS(Scheduler):
         return lines + [f"#PBS {line}" for line in host.directives]
 
 
+class _Slurm(Scheduler):
+    def header(self, host: RemoteHost, job_id: str, directory: str) -> list[str]:
+        lines = [
+            f"#SBATCH --job-name={job_id}",
+            # Standard error goes to the same file unless --error is given.
+            f"#SBATCH --output={directory}/scheduler.log",
+        ]
+        if host.queue:
+            lines.append(f"#SBATCH --partition={host.queue}")
+        if host.account:
+            lines.append(f"#SBATCH --account={host.account}")
+        if host.resources:
+            lines.append(f"#SBATCH {host.resources}")
+        if host.walltime:
+            lines.append(f"#SBATCH --time={host.walltime}")
+        return lines + [f"#SBATCH {line}" for line in host.directives]
+
+
 SCHEDULERS: dict[str, Scheduler] = {
     "pbs": _PBS(
         name="pbs", submit="qsub {script}", alive="qstat {id}", cancel="qdel {id}"
+    ),
+    "slurm": _Slurm(
+        name="slurm",
+        # --parsable prints "<id>" or "<id>;<cluster>".
+        submit="sbatch --parsable {script}",
+        # squeue exits 0 with no output once a job has left the queue, and
+        # fails only after the id is purged: the job is alive while a line is printed.
+        alive="squeue -h -j {id} -o %i 2> /dev/null | grep -q .",
+        cancel="scancel {id}",
+        id_pattern=r"\d+",
     ),
     # No queue: start the script directly on the remote machine (a workstation).
     "shell": Scheduler(
@@ -130,15 +158,17 @@ class RemoteHost:
     Attributes:
         name: Name shown in the app.
         host: SSH destination (an alias from ``~/.ssh/config`` or ``user@host``).
-        scheduler: Key of ``SCHEDULERS`` (``pbs`` or ``shell``).
+        scheduler: Key of ``SCHEDULERS`` (``pbs``, ``slurm`` or ``shell``).
         remote_root: Remote directory that receives one sub-directory per job.
         command: Worker command; the job directory is appended.
         setup: Shell lines run before the worker (module loads, environment).
-        queue: Queue name.
+        queue: Queue (PBS) or partition (Slurm).
         account: Project or account to charge.
-        resources: Resource request, e.g. ``select=1:ncpus=8:ngpus=1:mem=32gb``.
+        resources: Resource request: the PBS ``-l`` value, e.g.
+            ``select=1:ncpus=8:ngpus=1:mem=32gb``, or ``sbatch`` options, e.g.
+            ``--nodes=1 --gres=gpu:1 --cpus-per-task=3 --mem=30G``.
         walltime: Wall-time limit, e.g. ``24:00:00``.
-        directives: Further scheduler directives, without the ``#PBS`` prefix.
+        directives: Further scheduler directives, without the ``#PBS`` or ``#SBATCH`` prefix.
         sync_interval: Minimum seconds between two synchronisations of a job.
         grace: Seconds a job may be gone from the queue without a final status
             before it is declared failed. Shared file systems can show the
