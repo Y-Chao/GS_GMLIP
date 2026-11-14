@@ -90,7 +90,8 @@ class GCMCRunner(BaseSearcher):
             self.region = BoxRegion(
                 cell=slab.get_cell(),
                 z_min=z_max + 1.0,
-                z_max=z_max + 8.0,
+                # Within reach of the surface (see GARunner).
+                z_max=z_max + 4.0,
             )
 
         # --- Moves ---
@@ -127,7 +128,9 @@ class GCMCRunner(BaseSearcher):
             "insert": InsertMove(
                 self.blocks, self.block_names, self.chemical_potentials, self.region
             ),
-            "delete": DeleteMove(self.chemical_potentials),
+            "delete": DeleteMove(
+                self.chemical_potentials, self.blocks, self.block_names
+            ),
             "displace": DisplaceMove(self.max_displacement),
         }
         if len(allowed_elements) >= 2:

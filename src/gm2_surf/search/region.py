@@ -52,12 +52,14 @@ class BoxRegion(Region):
 
     def random_position(self, rng: np.random.Generator) -> np.ndarray:
         """Pick a random (x, y, z) within the box."""
-        a_vec = self.cell[0]
-        b_vec = self.cell[1]
-        x = rng.uniform(self.margin, np.linalg.norm(a_vec) - self.margin)
-        y = rng.uniform(self.margin, np.linalg.norm(b_vec) - self.margin)
-        z = rng.uniform(self.z_min, self.z_max)
-        return np.array([x, y, z])
+        # Fractional coordinates along a and b, so that a non-orthogonal
+        # (e.g. hexagonal) cell is sampled uniformly over its own area.
+        in_plane = np.zeros(3)
+        for vector in (self.cell[0], self.cell[1]):
+            length = float(np.linalg.norm(vector))
+            edge = min(self.margin / length, 0.5) if length > 0 else 0.0
+            in_plane += rng.uniform(edge, 1.0 - edge) * np.asarray(vector, dtype=float)
+        return np.array([in_plane[0], in_plane[1], rng.uniform(self.z_min, self.z_max)])
 
 
 class SphereRegion(Region):
