@@ -4,8 +4,9 @@ A preset fills the entries of the Hosts dialog (scheduler, directory, queue,
 resources, wall time, worker command, environment setup); the user-specific
 part (SSH alias, user name, project code) comes from ``~/.ssh/config`` and
 the dialog. Site facts follow the sites' public documentation and the
-author's cluster notes (checked 2026-11): default resources are a small
-slice of one node, software lives in ``~/apps/<code>``, and VASP builds are
+author's cluster notes (checked 2026-11-13): default resources are the
+smallest unit the site favours (a whole chunk on Vanda, a quarter node on
+ASPIRE 2A), software lives in ``~/apps/<code>``, and VASP builds are
 registered as modules ``vasp/<version>-<build>`` under ``~/apps/modulefiles``.
 
 Only PBS sites are listed, because ``SCHEDULERS`` has no Slurm entry yet.
@@ -78,15 +79,16 @@ HOST_PRESETS: dict[str, HostPreset] = {
             scratch="/scratch/{user}",
             # Execution queues only take jobs from the routing queues (auto, auto_free, autox).
             queue="auto_free",
-            resources="select=1:ncpus=16:mem=64gb",
-            setup=_vasp_setup(
-                "vasp/6.6.1-vd-cpu",
-                "# export VASP_PP_PATH=<directory holding potpaw_PBE>  (only H and Si smoke-test POTCARs are installed)",
-            ),
+            # One whole 36-core chunk: partial chunks are not accepted.
+            resources="select=1:ncpus=36:mpiprocs=36:mem=64gb",
+            setup=_vasp_setup("vasp/6.6.1-vd-cpu", "export VASP_PP_PATH=~/apps/vasp"),
             notes=(
                 "NUS VPN off campus; login nodes are for files and job submission only.",
-                "Limits: wall time <= 168 h; about 8 running jobs.",
-                "/scratch/<user> is 500 GB; files idle for 60 days may be purged.",
+                "Limits: wall time <= 240 h on CPU nodes, 168 h on GPU nodes; about 8 running jobs.",
+                "Allocation unit: a 36-core chunk (2 per node, up to 250 GB each); request whole chunks only, "
+                "e.g. select=2:ncpus=36:mpiprocs=36 with place=pack for a full node.",
+                "/scratch/<user> is 500 GB; files idle for 60 days may be purged. With a project allocation, "
+                "set Remote directory to the project scratch.",
                 "VASP 6.6.1 (CPU; DFT-D4, simple-DFT-D3, Libxc, libbeef, VTST, plugins). No GPU VASP.",
             ),
         ),
@@ -97,10 +99,13 @@ HOST_PRESETS: dict[str, HostPreset] = {
             alias=r"aspire[-_]?2a|^(asp|nscc[-_]?)?2a$|^nscc$",
             scratch="~/scratch",
             queue="normal",
-            resources="select=1:ncpus=16:mpiprocs=16:mem=64gb",
+            # A quarter of a 128-core node.
+            resources="select=1:ncpus=32:mpiprocs=32:mem=64gb",
             setup=_vasp_setup("vasp/6.6.1-as-cpu", "export VASP_PP_PATH=~/apps/vasp"),
             notes=(
                 "NUS VPN off campus. Jobs are rejected without an Account (NSCC project ID, #PBS -P).",
+                "CPU nodes have 128 cores: a quarter node (32) for molecules and small structures, a full node "
+                "(ncpus=128:mpiprocs=128, higher priority) for larger ones.",
                 "Limits: wall time <= 24 h; about 90 running jobs.",
                 "GitHub answers 403 on the cluster: copy sources from this Mac.",
                 "VASP 6.6.1 CPU (vasp/6.6.1-as-cpu) and GPU (vasp/6.6.1-as-gpu, one A100: ncpus=16:ngpus=1).",

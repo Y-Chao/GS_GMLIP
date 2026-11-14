@@ -30,7 +30,7 @@ def test_presets_match_ssh_aliases_and_fill_user_paths(presets):
     assert vanda["remote_root"] == "/scratch/e0123456/gm2_surf_jobs"
     assert (vanda["queue"], vanda["resources"], vanda["walltime"]) == (
         "auto_free",
-        "select=1:ncpus=16:mem=64gb",
+        "select=1:ncpus=36:mpiprocs=36:mem=64gb",
         "02:00:00",
     )
     assert (aspire["host"], aspire["queue"]) == (
